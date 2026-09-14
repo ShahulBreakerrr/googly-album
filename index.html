@@ -1,0 +1,3628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover">
+<title>📸 Full Screen Album</title>
+
+<!-- Firebase SDK (compat build for easy drop-in) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
+<style>
+:root{--dot-size:3px}
+
+*{
+    margin:0;
+    padding:0;
+    box-sizing:border-box;
+    user-select:none;
+    -webkit-tap-highlight-color:transparent;
+    -webkit-touch-callout:none;
+}
+
+html,body{
+    width:100%;
+    height:100%;
+    background:#000;
+    overflow:hidden;
+    touch-action:none;
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    overscroll-behavior:none;
+}
+
+.carousel-container{
+    position:relative;
+    width:100%;
+    height:100%;
+    overflow:hidden;
+    background:#000;
+}
+
+.carousel-track{
+    display:flex;
+    width:100%;
+    height:100%;
+    transition:transform .35s cubic-bezier(.23,1,.32,1);
+    will-change:transform;
+    cursor:grab;
+    touch-action:none;
+}
+
+.slide{
+    flex:0 0 100%;
+    width:100%;
+    height:100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:#000;
+    pointer-events:none;
+    position:relative;
+}
+
+.slide img{
+    width:100%;
+    height:100%;
+    object-fit:contain;
+    background:#000;
+    pointer-events:none;
+    -webkit-user-drag:none;
+    border:0;
+    outline:0;
+}
+
+.invisible-btn-top-right,
+.invisible-btn-top-left,
+.invisible-btn-bottom-right,
+.invisible-btn-bottom-left{
+    position:fixed;
+    width:150px;
+    height:150px;
+    z-index:50;
+    background:transparent;
+    border:0;
+    outline:0;
+    pointer-events:none;
+    cursor:default;
+    -webkit-tap-highlight-color:transparent;
+}
+
+.invisible-btn-top-right{top:0;right:0}
+.invisible-btn-top-left{top:0;left:0}
+.invisible-btn-bottom-right{bottom:0;right:0}
+.invisible-btn-bottom-left{bottom:0;left:0}
+
+.invisible-btn-center{
+    position:fixed;
+    top:50%;
+    left:50%;
+    transform:translate(-50%,-50%);
+    width:200px;
+    height:200px;
+    border-radius:50%;
+    z-index:40;
+    background:transparent;
+    border:0;
+    outline:0;
+    pointer-events:none;
+    cursor:default;
+}
+
+.invisible-buttons-disabled .invisible-btn-top-right,
+.invisible-buttons-disabled .invisible-btn-top-left,
+.invisible-buttons-disabled .invisible-btn-bottom-right,
+.invisible-buttons-disabled .invisible-btn-bottom-left,
+.invisible-buttons-disabled .invisible-btn-center{
+    pointer-events:none !important;
+    z-index:0 !important;
+}
+
+.red-dot-indicator-top,
+.red-dot-indicator-bottom,
+.red-dot-indicator-bottom-left{
+    position:fixed;
+    width:var(--dot-size);
+    height:var(--dot-size);
+    background:red;
+    border-radius:50%;
+    z-index:100;
+    opacity:0;
+    transition:opacity .2s ease,background-color .3s ease;
+    pointer-events:none;
+    box-shadow:0 0 calc(var(--dot-size)*.8) rgba(255,0,0,.9);
+}
+
+.red-dot-indicator-top{top:20px;right:20px}
+.red-dot-indicator-bottom{bottom:20px;right:20px}
+.red-dot-indicator-bottom-left{bottom:20px;left:20px}
+
+.red-dot-indicator-top.active,
+.red-dot-indicator-bottom.active,
+.red-dot-indicator-bottom-left.active{
+    opacity:1;
+}
+
+.red-dot-indicator-bottom-left.green{
+    background:#00ff00;
+    box-shadow:0 0 calc(var(--dot-size)*.8) rgba(0,255,0,.9);
+}
+
+.settings-page,
+.albums-page,
+.live-mode-page{
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    background:#1a1a1a;
+    z-index:1000;
+    overflow-y:auto;
+    display:none;
+    color:#fff;
+}
+
+.albums-page{z-index:2000}
+.live-mode-page{z-index:3000}
+
+.settings-page.active,
+.albums-page.active,
+.live-mode-page.active{
+    display:flex;
+    flex-direction:column;
+}
+
+.settings-header{
+    padding:15px;
+    background:#2a2a2a;
+    display:flex;
+    align-items:center;
+    position:sticky;
+    top:0;
+    z-index:10;
+    gap:8px;
+}
+
+.back-btn{
+    background:#444;
+    color:#fff;
+    border:0;
+    padding:10px 12px;
+    border-radius:5px;
+    cursor:pointer;
+    font-size:13px;
+    white-space:nowrap;
+}
+
+.save-settings-btn{
+    background:#28a745;
+    color:#fff;
+    border:0;
+    padding:10px 12px;
+    border-radius:5px;
+    cursor:pointer;
+    font-size:13px;
+    margin-left:auto;
+    white-space:nowrap;
+}
+
+.settings-content{
+    padding:20px;
+    flex:1;
+}
+
+.settings-title{
+    text-align:center;
+    font-size:18px;
+    font-weight:bold;
+    color:#ffd700;
+    margin-bottom:20px;
+    letter-spacing:1px;
+    text-transform:uppercase;
+}
+
+.settings-subtitle{
+    text-align:center;
+    font-size:16px;
+    font-weight:bold;
+    color:#4fc3f7;
+    margin-bottom:15px;
+    letter-spacing:0.5px;
+    padding-top:20px;
+    border-top:1px solid #444;
+}
+
+.setting-group{
+    margin-bottom:20px;
+}
+
+.setting-label{
+    display:block;
+    margin-bottom:8px;
+    font-size:14px;
+    color:#ccc;
+    text-align:center;
+}
+
+.setting-input{
+    width:100%;
+    padding:12px;
+    background:#333;
+    border:1px solid #444;
+    border-radius:5px;
+    color:#fff;
+    font-size:16px;
+}
+
+.album-selector,
+.mode-selector{
+    width:100%;
+    padding:12px;
+    background:#333;
+    border:1px solid #444;
+    border-radius:5px;
+    color:#fff;
+    font-size:16px;
+}
+
+.open-albums-btn,
+.create-album-btn,
+.open-live-mode-btn{
+    width:100%;
+    padding:15px;
+    background:#007bff;
+    color:#fff;
+    border:0;
+    border-radius:5px;
+    cursor:pointer;
+    font-size:16px;
+    margin-top:10px;
+}
+
+.create-album-btn{background:#28a745}
+.open-live-mode-btn{background:#ff9800}
+
+.delete-album-btn{
+    background:#dc3545;
+    color:#fff;
+    border:0;
+    padding:15px;
+    border-radius:5px;
+    cursor:pointer;
+    font-size:16px;
+    width:100%;
+    margin-top:10px;
+}
+
+.album-row{
+    display:flex;
+    gap:5px;
+    margin-bottom:10px;
+    align-items:center;
+    flex-wrap:nowrap;
+}
+
+.album-row input{
+    padding:8px;
+    background:#333;
+    border:1px solid #444;
+    border-radius:5px;
+    color:#fff;
+    font-size:12px;
+    min-width:0;
+}
+
+.album-row input.image-name{
+    flex:0 0 70px;
+    max-width:70px;
+}
+
+.album-row input.image-value{
+    flex:1;
+    min-width:50px;
+}
+
+.delete-btn{
+    background:#dc3545;
+    color:#fff;
+    border:0;
+    padding:8px;
+    border-radius:5px;
+    cursor:pointer;
+    font-size:14px;
+    min-width:32px;
+    flex-shrink:0;
+}
+
+.add-row-btn{
+    background:#28a745;
+    color:#fff;
+    border:0;
+    padding:10px 20px;
+    border-radius:5px;
+    cursor:pointer;
+    font-size:16px;
+    margin-top:10px;
+    width:100%;
+}
+
+.direct-upload-btn{
+    background:#ff9800;
+    color:#fff;
+    border:0;
+    padding:15px;
+    border-radius:5px;
+    cursor:pointer;
+    font-size:16px;
+    width:100%;
+    margin-top:10px;
+}
+
+.save-album-btn{
+    background:#007bff;
+    color:#fff;
+    border:0;
+    padding:15px;
+    border-radius:5px;
+    cursor:pointer;
+    font-size:16px;
+    width:100%;
+    margin-top:10px;
+}
+
+.export-album-btn{
+    background:#17a2b8;
+    color:#fff;
+    border:0;
+    padding:15px;
+    border-radius:5px;
+    cursor:pointer;
+    font-size:16px;
+    width:100%;
+    margin-top:10px;
+}
+
+.import-album-btn{
+    background:#6f42c1;
+    color:#fff;
+    border:0;
+    padding:15px;
+    border-radius:5px;
+    cursor:pointer;
+    font-size:16px;
+    width:100%;
+    margin-top:10px;
+}
+
+.loading-overlay{
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    background:#000;
+    z-index:5000;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+}
+
+.loading-spinner{
+    width:50px;
+    height:50px;
+    border:4px solid #333;
+    border-top:4px solid #fff;
+    border-radius:50%;
+    animation:spin 1s linear infinite;
+}
+
+@keyframes spin{
+    0%{transform:rotate(0deg)}
+    100%{transform:rotate(360deg)}
+}
+
+.status-message{
+    position:fixed;
+    bottom:20px;
+    left:50%;
+    transform:translateX(-50%);
+    background:rgba(0,0,0,.8);
+    color:#fff;
+    padding:10px 20px;
+    border-radius:5px;
+    z-index:6000;
+    display:none;
+}
+
+.settings-header h2{
+    font-size:16px;
+    margin:0;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+}
+
+.loading-text{
+    color:#fff;
+    margin-top:15px;
+    font-size:16px;
+}
+
+.file-input-hidden{display:none}
+
+.author-text{
+    text-align:center;
+    padding:20px;
+    font-size:11px;
+    color:#666;
+    margin-top:auto;
+    letter-spacing:.5px;
+}
+
+.adjust-btn{
+    background:#444;
+    color:#fff;
+    border:0;
+    padding:10px 20px;
+    border-radius:5px;
+    cursor:pointer;
+    font-size:18px;
+    margin:0 5px;
+    min-width:40px;
+}
+
+.value-display{
+    display:inline-block;
+    min-width:40px;
+    text-align:center;
+    font-size:16px;
+    font-weight:bold;
+    color:#fff;
+}
+
+.toggle-container{
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    margin-bottom:15px;
+    gap:10px;
+}
+
+.toggle-switch{
+    position:relative;
+    width:50px;
+    height:25px;
+    background:#444;
+    border-radius:25px;
+    cursor:pointer;
+    transition:background .3s;
+    flex-shrink:0;
+}
+
+.toggle-switch.active{background:#28a745}
+
+.toggle-switch::after{
+    content:"";
+    position:absolute;
+    top:2px;
+    left:2px;
+    width:21px;
+    height:21px;
+    background:#fff;
+    border-radius:50%;
+    transition:transform .3s;
+}
+
+.toggle-switch.active::after{
+    transform:translateX(25px);
+}
+
+.dim-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s ease;
+    display: flex;
+    z-index: 60;
+}
+
+.dim-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.grid-numbers {
+    display: grid;
+    grid-template-rows: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    inset: 0;
+}
+
+.grid-letters {
+    display: grid;
+    grid-template-rows: 1fr;
+    grid-template-columns: repeat(3, 1fr);
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    inset: 0;
+}
+
+.grid-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    background: transparent;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    padding: 0;
+    pointer-events: auto;
+    width: 100%;
+    height: 100%;
+    min-width: 60px;
+    min-height: 60px;
+}
+
+.blur-spot {
+    width: 2px;
+    height: 2px;
+    background: rgba(255, 255, 255, 0.09);
+    border-radius: 50%;
+    pointer-events: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+
+.grid-cell::before {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    pointer-events: auto;
+}
+
+.grid-cell:active .blur-spot {
+    background: rgba(255, 255, 255, 0.6);
+}
+
+#glitchScreen{
+    position:fixed;
+    left:0;
+    top:0;
+    width:100vw;
+    height:100vh;
+    background:#000;
+    overflow:hidden;
+    isolation:isolate;
+    z-index:4000;
+    display:none;
+    pointer-events:none;
+}
+
+.rgb{
+    position:absolute;
+    left:-10%;
+    top:-10%;
+    width:120%;
+    height:120%;
+    opacity:0;
+    pointer-events:none;
+    mix-blend-mode:screen;
+}
+
+.rgb.red{
+    background:repeating-linear-gradient(
+        0deg,
+        #ff0000 0px,
+        #ff0000 4px,
+        #000 4px,
+        #000 9px
+    );
+}
+
+.rgb.green{
+    background:repeating-linear-gradient(
+        0deg,
+        #00ff00 0px,
+        #00ff00 3px,
+        #000 3px,
+        #000 10px
+    );
+}
+
+.rgb.blue{
+    background:repeating-linear-gradient(
+        0deg,
+        #0000ff 0px,
+        #0000ff 5px,
+        #000 5px,
+        #000 11px
+    );
+}
+
+#colorBase{
+    position:absolute;
+    inset:0;
+    background:#000;
+    opacity:1;
+    pointer-events:none;
+}
+
+#scanlines{
+    position:absolute;
+    inset:0;
+    pointer-events:none;
+    opacity:0;
+    background:repeating-linear-gradient(
+        0deg,
+        rgba(255,255,255,.18) 0px,
+        rgba(255,255,255,.18) 2px,
+        rgba(0,0,0,.65) 2px,
+        rgba(0,0,0,.65) 6px
+    );
+}
+
+.glitchBar{
+    position:absolute;
+    left:-20%;
+    width:140%;
+    height:5px;
+    opacity:0;
+    pointer-events:none;
+    z-index:20;
+    transform:translateX(0);
+}
+
+.redBar{background:#ff003c}
+.greenBar{background:#00ff66}
+.blueBar{background:#0066ff}
+.whiteBar{background:#fff}
+
+.block{
+    position:absolute;
+    opacity:0;
+    pointer-events:none;
+    z-index:30;
+    image-rendering:pixelated;
+}
+
+#flash{
+    position:absolute;
+    inset:0;
+    background:#fff;
+    opacity:0;
+    pointer-events:none;
+    z-index:100;
+}
+
+#redEdge{
+    position:absolute;
+    inset:0;
+    border-left:25px solid #f00;
+    border-right:15px solid #f00;
+    opacity:0;
+    pointer-events:none;
+    mix-blend-mode:screen;
+}
+
+#blueEdge{
+    position:absolute;
+    inset:0;
+    border-left:15px solid #00f;
+    border-right:25px solid #00f;
+    opacity:0;
+    pointer-events:none;
+    mix-blend-mode:screen;
+}
+
+#noise{
+    position:absolute;
+    inset:0;
+    opacity:0;
+    pointer-events:none;
+    z-index:40;
+    background:repeating-linear-gradient(
+        90deg,
+        #f00 0px,
+        #f00 1px,
+        transparent 1px,
+        transparent 4px,
+        #0f0 4px,
+        #0f0 5px,
+        transparent 5px,
+        transparent 8px,
+        #00f 8px,
+        #00f 9px,
+        transparent 9px,
+        transparent 13px
+    );
+    mix-blend-mode:screen;
+}
+
+#glitchText{
+    position:absolute;
+    left:50%;
+    top:50%;
+    transform:translate(-50%,-50%);
+    color:#fff;
+    font-family:monospace,sans-serif;
+    font-size:clamp(22px,7vw,90px);
+    font-weight:900;
+    letter-spacing:8px;
+    text-align:center;
+    opacity:0;
+    pointer-events:none;
+    z-index:200;
+    text-shadow:8px 0 #f00,-8px 0 #0ff;
+}
+
+@media(max-width:600px){
+    .glitchBar{height:3px}
+    #glitchText{letter-spacing:4px}
+}
+</style>
+</head>
+
+<body>
+
+<div id="redDotIndicatorTop" class="red-dot-indicator-top"></div>
+<div id="redDotIndicatorBottom" class="red-dot-indicator-bottom"></div>
+<div id="redDotIndicatorBottomLeft" class="red-dot-indicator-bottom-left"></div>
+
+<div id="forceTransferBtn" class="invisible-btn-top-right"></div>
+<div id="settingsBtn" class="invisible-btn-top-left"></div>
+<div id="apiTransferBtn" class="invisible-btn-bottom-right"></div>
+<div id="redirectBtn" class="invisible-btn-bottom-left"></div>
+<div id="centerBtn" class="invisible-btn-center"></div>
+
+<div id="loadingOverlay" class="loading-overlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Loading...</div>
+</div>
+
+<div id="statusMessage" class="status-message"></div>
+
+<div class="carousel-container" id="carouselContainer">
+    <div class="carousel-track" id="carouselTrack"></div>
+</div>
+
+<div id="glitchScreen">
+    <div id="colorBase"></div>
+    <div class="rgb red"></div>
+    <div class="rgb green"></div>
+    <div class="rgb blue"></div>
+    <div id="redEdge"></div>
+    <div id="blueEdge"></div>
+    <div id="scanlines"></div>
+    <div id="noise"></div>
+    <div id="flash"></div>
+    <div id="glitchText">GLITCH</div>
+</div>
+
+<input type="file" id="directUploadInput" class="file-input-hidden" accept="image/*" multiple>
+<input type="file" id="importAlbumInput" class="file-input-hidden" accept=".json">
+
+<div id="settingsPage" class="settings-page">
+    <div class="settings-header">
+        <button class="back-btn" onclick="closeSettings()">← Back</button>
+        <h2>Settings</h2>
+        <button class="save-settings-btn" onclick="saveSettingsAndClose()">💾 Save</button>
+    </div>
+
+    <div class="settings-content">
+        <div class="setting-group">
+            <label class="setting-label">Quick Album Selection</label>
+            <select class="album-selector" id="albumSelector" onchange="onAlbumChange(this.value)"></select>
+        </div>
+
+        <button class="open-albums-btn" onclick="openAlbumsPage()">Open Album</button>
+        <button class="create-album-btn" onclick="createNewAlbum()">Create New Album</button>
+        <button class="open-live-mode-btn" onclick="openLiveModePage()">🎯 LIVE Mode Settings</button>
+
+        <div class="settings-subtitle">⚡ Force Transfer Settings</div>
+        
+        <div class="toggle-container">
+            <div class="toggle-switch" id="forceNtfyToggle" onclick="toggleForceNtfy()"></div>
+            <label class="setting-label" style="margin:0;">Send to NTFY</label>
+        </div>
+
+        <div class="toggle-container">
+            <div class="toggle-switch" id="forceApiToggle" onclick="toggleForceApi()"></div>
+            <label class="setting-label" style="margin:0;">Send to API</label>
+        </div>
+
+        <div class="settings-subtitle">⚙️ Common Settings</div>
+        
+        <div class="setting-group">
+            <label class="setting-label">Red Dot Size</label>
+            <div style="display:flex;align-items:center;justify-content:center;gap:10px;">
+                <button class="adjust-btn" onclick="adjustDotSize(-1)">-</button>
+                <span class="value-display" id="dotSizeDisplay">3</span>
+                <button class="adjust-btn" onclick="adjustDotSize(1)">+</button>
+            </div>
+            <div style="text-align:center;margin-top:10px;">
+                <span style="display:inline-block;width:var(--dot-size);height:var(--dot-size);background:red;border-radius:50%;box-shadow:0 0 calc(var(--dot-size)*.8) rgba(255,0,0,.9);"></span>
+            </div>
+        </div>
+
+        <div class="settings-subtitle">🎯 Secret Button Customization</div>
+        
+        <div class="setting-group">
+            <label class="setting-label">Top-Right Corner (Double Tap)</label>
+            <select class="mode-selector" id="topRightMode" onchange="onSecretButtonChange()">
+                <option value="force">Force Transfer Mode</option>
+                <option value="peek">Peek Mode</option>
+                <option value="api">Force API Transfer</option>
+                <option value="redirect">Redirect Mode</option>
+                <option value="live">LIVE Mode</option>
+            </select>
+        </div>
+
+        <div class="setting-group">
+            <label class="setting-label">Bottom-Right Corner (Double Tap)</label>
+            <select class="mode-selector" id="bottomRightMode" onchange="onSecretButtonChange()">
+                <option value="force">Force Transfer Mode</option>
+                <option value="peek">Peek Mode</option>
+                <option value="api">Force API Transfer</option>
+                <option value="redirect">Redirect Mode</option>
+                <option value="live">LIVE Mode</option>
+            </select>
+        </div>
+
+        <div class="setting-group">
+            <label class="setting-label">Bottom-Left Corner (Double Tap)</label>
+            <select class="mode-selector" id="bottomLeftMode" onchange="onSecretButtonChange()">
+                <option value="force">Force Transfer Mode</option>
+                <option value="peek">Peek Mode</option>
+                <option value="api">Force API Transfer</option>
+                <option value="redirect">Redirect Mode</option>
+                <option value="live">LIVE Mode</option>
+            </select>
+        </div>
+
+        <div class="setting-group">
+            <label class="setting-label">Middle (Double Tap)</label>
+            <select class="mode-selector" id="middleMode" onchange="onSecretButtonChange()">
+                <option value="force">Force Transfer Mode</option>
+                <option value="peek">Peek Mode</option>
+                <option value="api">Force API Transfer</option>
+                <option value="redirect">Redirect Mode</option>
+                <option value="live">LIVE Mode</option>
+            </select>
+        </div>
+
+        <div class="settings-subtitle">🔄 Redirect Mode</div>
+        
+        <div class="setting-group">
+            <label class="setting-label">Red-Green Dot Delay (seconds)</label>
+            <div style="display:flex;align-items:center;justify-content:center;gap:10px;">
+                <button class="adjust-btn" onclick="adjustRedGreenDelay(-1)">-</button>
+                <span class="value-display" id="redGreenDelayDisplay">4</span>
+                <button class="adjust-btn" onclick="adjustRedGreenDelay(1)">+</button>
+            </div>
+        </div>
+
+        <div class="setting-group">
+            <label class="setting-label">Glitch Duration (seconds)</label>
+            <div style="display:flex;align-items:center;justify-content:center;gap:10px;">
+                <button class="adjust-btn" onclick="adjustGlitchDuration(-1)">-</button>
+                <span class="value-display" id="glitchDurationDisplay">4</span>
+                <button class="adjust-btn" onclick="adjustGlitchDuration(1)">+</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="author-text">iNfinity by Shahul Breaker</div>
+</div>
+
+<div id="albumsPage" class="albums-page">
+    <div class="settings-header">
+        <button class="back-btn" onclick="closeAlbumsPage()">← Back</button>
+        <h2 id="currentAlbumName">Album</h2>
+        <button class="save-settings-btn" onclick="saveCurrentAlbumAndClose()">💾 Save</button>
+    </div>
+    <div class="settings-content" id="albumsContent"></div>
+    <div class="author-text">iNfinity by Shahul Breaker</div>
+</div>
+
+<div id="liveModePage" class="live-mode-page">
+    <div class="settings-header">
+        <button class="back-btn" onclick="closeLiveModePage()">← Back</button>
+        <h2>LIVE Mode Settings</h2>
+        <button class="save-settings-btn" onclick="saveLiveModeSettings()">💾 Save</button>
+    </div>
+    <div class="settings-content" id="liveModeContent">
+        <div class="settings-title">🎯 LIVE Mode Configuration</div>
+        
+        <div class="setting-group">
+            <label class="setting-label">1. Card Colour Selection Image URL</label>
+            <input type="text" class="setting-input" id="liveColorImage" placeholder="https://example.com/color.jpg">
+        </div>
+        
+        <div class="setting-group">
+            <label class="setting-label">2. Suit Selection Image URL</label>
+            <input type="text" class="setting-input" id="liveSuitImage" placeholder="https://example.com/suit.jpg">
+        </div>
+        
+        <div class="setting-group">
+            <label class="setting-label">3. Card Value/Number/Picture Card Image URL</label>
+            <input type="text" class="setting-input" id="liveValueImage" placeholder="https://example.com/value.jpg">
+        </div>
+        
+        <div class="setting-group">
+            <label class="setting-label">4. Number Grid Background Image URL</label>
+            <input type="text" class="setting-input" id="liveGridImage" placeholder="https://example.com/grid.jpg">
+        </div>
+        
+        <div class="setting-group">
+            <label class="setting-label">5. Any Image URL</label>
+            <input type="text" class="setting-input" id="liveAnyImage" placeholder="https://example.com/any.jpg">
+        </div>
+        
+        <button class="open-albums-btn" onclick="toggleCardOutputImages()">🃏 Card Output Images</button>
+        
+        <div id="cardOutputSection" style="display:none;margin-top:20px;">
+            <div class="settings-subtitle">Card Output Images (52 Cards)</div>
+            <div id="cardImagesList"></div>
+        </div>
+        
+        <div class="settings-subtitle">⚙️ LIVE Mode Options</div>
+        
+        <div class="toggle-container">
+            <div class="toggle-switch" id="liveForceTransferToggle" onclick="toggleLiveForceTransfer()"></div>
+            <label class="setting-label" style="margin:0;">Force Transfer</label>
+        </div>
+        
+        <div id="liveForceTransferAlbumSection" style="display:none;">
+            <div class="setting-group">
+                <label class="setting-label">Select Card Album for Force Transfer</label>
+                <select class="album-selector" id="liveForceTransferAlbum" onchange="validateLiveForceTransferAlbum()"></select>
+                <div id="albumFormatWarning" style="color:#ff6b6b;font-size:12px;margin-top:5px;display:none;">
+                    ⚠️ Card name format is wrong! Example format: "2 of hearts", "king of spades"
+                </div>
+                <div id="albumFormatSuccess" style="color:#4caf50;font-size:12px;margin-top:5px;display:none;">
+                    ✓ Card name format is correct!
+                </div>
+            </div>
+        </div>
+        
+        <div class="toggle-container">
+            <div class="toggle-switch" id="live7thImageToggle" onclick="toggleLive7thImage()"></div>
+            <label class="setting-label" style="margin:0;">7th Image Option</label>
+        </div>
+        
+        <div id="live7thImageSection" style="display:none;">
+            <div class="setting-group">
+                <label class="setting-label">7th Image URL (Optional)</label>
+                <input type="text" class="setting-input" id="live7thImageUrl" placeholder="https://example.com/7th-image.jpg">
+            </div>
+        </div>
+    </div>
+    <div class="author-text">iNfinity by Shahul Breaker</div>
+</div>
+
+<script>
+(function(){
+
+"use strict";
+
+/* =========================================================
+   ⚙️ CONFIGURATION — EDIT THESE FOR YOUR SETUP
+========================================================= */
+
+// --- Firebase Configuration ---
+// Replace with your own config from Firebase Console
+const firebaseConfig = {
+  apiKey: "AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
+  authDomain: "googly-album.firebaseapp.com",
+  databaseURL: "https://googly-album-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "googly-album",
+  storageBucket: "googly-album.appspot.com",
+  messagingSenderId: "000000000000",
+  appId: "1:000000000000:web:xxxxxxxxxxxxxxxxxxxxxx"
+};
+
+// Initialize Firebase
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+
+// --- User extraction ---
+// Change "album.php" to "index.html" if using Cloudflare Pages
+const pathParts = window.location.pathname.split("/").filter(p => p !== "" && p !== "index.html" && p !== "album.php" && p !== "album");
+const username = pathParts.length > 0 ? pathParts[pathParts.length - 1].replace(".php","").replace(".html","") : "shahul";
+console.log("👤 Username:", username);
+
+// --- Firebase refs for this user ---
+const trackerRef = database.ref('trackers/' + username);
+const userRef = database.ref('users/' + username);
+
+// --- Your new domains ---
+const APP_DOMAIN       = "https://googly.cc";
+const IMAGES_BASE_URL  = "https://images.googly.cc/";  // Cloudflare R2
+
+// --- Legacy PHP endpoints (only for album/settings file storage) ---
+// These will remain on your old server, OR you can migrate them to Firebase too.
+// For now, we keep them so album/settings still work. Switch later if needed.
+const CLOUD_API_BASE      = "https://mlkn.cc/api/";
+const UPLOAD_URL          = "https://mlkn.cc/api/upload_image.php";
+const GET_ALBUMS_LIST_URL = `${CLOUD_API_BASE}get_albums_list.php?username=${username}`;
+const SAVE_ALBUM_FILE_URL = `${CLOUD_API_BASE}save_album_file.php`;
+const DELETE_ALBUM_FILE_URL = `${CLOUD_API_BASE}delete_album_file.php`;
+const GET_SETTINGS_URL    = `${CLOUD_API_BASE}get_settings.php?username=${username}`;
+const SAVE_SETTINGS_URL   = `${CLOUD_API_BASE}save_settings.php`;
+const GET_FORCE_TRANSFER_URL = `${CLOUD_API_BASE}get_force_transfer.php?username=${username}`;
+const SAVE_FORCE_TRANSFER_URL = `${CLOUD_API_BASE}save_force_transfer.php`;
+const GET_SECRET_BUTTONS_URL = `${CLOUD_API_BASE}get_secret_buttons.php?username=${username}`;
+const SAVE_SECRET_BUTTONS_URL = `${CLOUD_API_BASE}save_secret_buttons.php`;
+const GET_LIVE_MODE_URL   = `${CLOUD_API_BASE}get_live_mode.php?username=${username}`;
+const SAVE_LIVE_MODE_URL  = `${CLOUD_API_BASE}save_live_mode.php`;
+
+// --- NTFY / API (peek mode - keep same external services) ---
+const NTFY_TOPIC = `${username}infinity`;
+const PEEK_API_URL = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=`;
+const API_BASE = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=`;
+
+// --- Default image base ---
+const DEFAULT_BASE_URL = IMAGES_BASE_URL;
+
+/* =========================================================
+   CARD DATABASE FOR LIVE MODE
+========================================================= */
+
+const cardDB = [
+    { "name": "ace of hearts", "value": "0969" },
+    { "name": "2 of hearts", "value": "0934" },
+    { "name": "3 of hearts", "value": "0955" },
+    { "name": "4 of hearts", "value": "0975" },
+    { "name": "5 of hearts", "value": "0949" },
+    { "name": "6 of hearts", "value": "0966" },
+    { "name": "7 of hearts", "value": "0938" },
+    { "name": "8 of hearts", "value": "0957" },
+    { "name": "9 of hearts", "value": "0980" },
+    { "name": "10 of hearts", "value": "0948" },
+    { "name": "jack of hearts", "value": "0936" },
+    { "name": "queen of hearts", "value": "0981" },
+    { "name": "king of hearts", "value": "0962" },
+    { "name": "ace of diamonds", "value": "0956" },
+    { "name": "2 of diamonds", "value": "0970" },
+    { "name": "3 of diamonds", "value": "0946" },
+    { "name": "4 of diamonds", "value": "0958" },
+    { "name": "5 of diamonds", "value": "0982" },
+    { "name": "6 of diamonds", "value": "0950" },
+    { "name": "7 of diamonds", "value": "0973" },
+    { "name": "8 of diamonds", "value": "0939" },
+    { "name": "9 of diamonds", "value": "0963" },
+    { "name": "10 of diamonds", "value": "0983" },
+    { "name": "jack of diamonds", "value": "0971" },
+    { "name": "queen of diamonds", "value": "0967" },
+    { "name": "king of diamonds", "value": "0940" },
+    { "name": "ace of clubs", "value": "0984" },
+    { "name": "2 of clubs", "value": "0953" },
+    { "name": "3 of clubs", "value": "0972" },
+    { "name": "4 of clubs", "value": "0943" },
+    { "name": "5 of clubs", "value": "0960" },
+    { "name": "6 of clubs", "value": "0985" },
+    { "name": "7 of clubs", "value": "0951" },
+    { "name": "8 of clubs", "value": "0974" },
+    { "name": "9 of clubs", "value": "0942" },
+    { "name": "10 of clubs", "value": "0968" },
+    { "name": "jack of clubs", "value": "0959" },
+    { "name": "queen of clubs", "value": "0941" },
+    { "name": "king of clubs", "value": "0978" },
+    { "name": "ace of spades", "value": "0937" },
+    { "name": "2 of spades", "value": "0954" },
+    { "name": "3 of spades", "value": "0976" },
+    { "name": "4 of spades", "value": "0945" },
+    { "name": "5 of spades", "value": "0965" },
+    { "name": "6 of spades", "value": "0935" },
+    { "name": "7 of spades", "value": "0952" },
+    { "name": "8 of spades", "value": "0979" },
+    { "name": "9 of spades", "value": "0944" },
+    { "name": "10 of spades", "value": "0964" },
+    { "name": "jack of spades", "value": "0961" },
+    { "name": "queen of spades", "value": "0947" },
+    { "name": "king of spades", "value": "0977" }
+];
+
+/* =========================================================
+   DATA
+========================================================= */
+
+let imageLinks = [];
+let imageNames = [];
+let TOTAL_IMAGES = 0;
+let currentIndex = 0;
+
+const CARTOON_ALBUM = {
+    name:"cartoon",
+    redirectUrl:"https://www.google.com",
+    apiMode:false,
+    apiUrl:"",
+    jsonField:"",
+    images:[
+        {name:"Daffy Duck",value:"0282"},{name:"Bambi",value:"0283"},{name:"Baloo",value:"0284"},
+        {name:"Donald Duck",value:"0285"},{name:"Bolt",value:"0286"},{name:"Kung Fu Panda",value:"0287"},
+        {name:"Betty Boop",value:"0288"},{name:"Hobbes",value:"0289"},{name:"Iron Man",value:"0290"},
+        {name:"Frozen",value:"0291"},{name:"Calvin",value:"0292"},{name:"Daisy Duck",value:"0293"},
+        {name:"Dory",value:"0294"},{name:"Bagheera",value:"0295"},{name:"Ariel",value:"0296"},
+        {name:"Eeyore",value:"0297"},{name:"Daphne Blake",value:"0298"},{name:"Bugs Bunny",value:"0299"},
+        {name:"Flounder",value:"0300"},{name:"Jerry",value:"0301"},{name:"Beast",value:"0302"},
+        {name:"Hulk",value:"0303"},{name:"Garfield",value:"0304"},{name:"Fred Jones",value:"0305"},
+        {name:"Charlie Brown",value:"0306"},{name:"Chip and Dale",value:"0307"},{name:"Ben Ten",value:"0308"},
+        {name:"Asterix",value:"0309"},{name:"Hefty Smurf",value:"0310"},{name:"Aladdin",value:"0311"},
+        {name:"Megamind",value:"0312"},{name:"Captain America",value:"0313"},{name:"Goofy",value:"0314"},
+        {name:"Hercules",value:"0315"},{name:"Batman",value:"0316"},{name:"Mickey Mouse",value:"0317"},
+        {name:"Alvin",value:"0318"},{name:"Minion",value:"0319"},{name:"Mowgli",value:"0320"},
+        {name:"Moana",value:"0321"},{name:"Minnie Mouse",value:"0322"},{name:"Mulan",value:"0323"},
+        {name:"Naruto Uzumaki",value:"0324"},{name:"Nemo",value:"0325"},{name:"Peter Pan",value:"0326"},
+        {name:"Obelix",value:"0327"},{name:"Piglet",value:"0328"},{name:"Olive Oyl",value:"0329"},
+        {name:"Odie",value:"0330"},{name:"Papa Smurf",value:"0331"},{name:"Pikachu",value:"0332"},
+        {name:"Pinocchio",value:"0333"},{name:"Pluto",value:"0334"},{name:"Porky Pig",value:"0335"},
+        {name:"Pink Panther",value:"0336"},{name:"Popeye",value:"0337"},{name:"Puss In Boots",value:"0338"},
+        {name:"Scooby Doo",value:"0339"},{name:"Shaggy Rogers",value:"0340"},{name:"Simon",value:"0341"},
+        {name:"Ratatouille",value:"0342"},{name:"Road Runner",value:"0343"},{name:"Simba",value:"0344"},
+        {name:"Smurfette",value:"0345"},{name:"Snoopy",value:"0346"},{name:"Snowy",value:"0347"},
+        {name:"Speedy Gonzales",value:"0348"},{name:"Spider Man",value:"0349"},{name:"SpongeBob SquarePants",value:"0350"},
+        {name:"Sylvester",value:"0351"},{name:"Tangled",value:"0352"},{name:"Tarzan",value:"0353"},
+        {name:"Tasmanian Devil",value:"0354"},{name:"Theodore",value:"0355"},{name:"Thor",value:"0356"},
+        {name:"Timon and Pumbaa",value:"0357"},{name:"Tintin",value:"0358"},{name:"Tom",value:"0359"},
+        {name:"Tweety",value:"0360"},{name:"Velma Dinkley",value:"0361"},{name:"Wall E",value:"0362"},
+        {name:"Winnie The Pooh",value:"0363"},{name:"Woodstock",value:"0364"},{name:"Woody Woodpecker",value:"0365"}
+    ]
+};
+
+let config = {
+    username,
+    selectedAlbum:null,
+    albums:{},
+    settings:{
+        dotSize:3,
+        redGreenDelay:4,
+        glitchDuration:4
+    },
+    forceTransfer:{
+        forceNtfyEnabled:false,
+        forceApiEnabled:false
+    },
+    secretButtons:{
+        topRight:"force",
+        bottomRight:"api",
+        bottomLeft:"redirect",
+        middle:"peek"
+    },
+    liveMode:{
+        colorImage:"https://images.googly.cc/0986.jpg",
+        suitImage:"https://images.googly.cc/0987.jpg",
+        valueImage:"https://images.googly.cc/0988.jpg",
+        gridImage:"https://images.googly.cc/0989.jpg",
+        anyImage:"https://images.googly.cc/0990.jpg",
+        cardOutputImages: {},
+        forceTransferEnabled:false,
+        forceTransferAlbum:"",
+        seventhImageEnabled:false,
+        seventhImageUrl:""
+    }
+};
+
+/* =========================================================
+   MODES / TIMERS
+========================================================= */
+
+let isForceModeActive = false;
+let isApiModeActive = false;
+let isRedirectModeActive = false;
+let isLiveModeActive = false;
+let isGodMode = false;
+let hasSwipedSinceActivation = false;
+let lastImageChangeTime = Date.now();
+let redirectTimer = null;
+let imageTransferTimer = null;
+let lastTrackerValue = "__init__";
+let trackerListenerRef = null;
+let touchStartX = 0, touchStartY = 0, touchCurrentX = 0, touchCurrentY = 0;
+let isDragging = false, startTranslateX = 0;
+let lastTapTimeTopRight = 0, lastTapTimeTopLeft = 0, lastTapTimeBottomRight = 0, lastTapTimeBottomLeft = 0, lastTapTimeCenter = 0;
+const DOUBLE_TAP_DELAY = 300;
+let glitchRunning = false;
+let glitchTimeout = null;
+let wakeLock = null;
+let currentRedirectionWord = "";
+
+let liveSelectedColor = null;
+let liveSelectedSuit = null;
+let liveSelectedCategory = null;
+let liveSelectedValue = null;
+let liveFinalCardName = null;
+let liveCardLocked = false;
+let liveCurrentSlide = 0;
+let liveTotalSlides = 7;
+let liveTouchStartX = 0;
+let liveTouchStartY = 0;
+let liveTouchCurrentX = 0;
+let liveTouchCurrentY = 0;
+let liveTouchStartTime = 0;
+let liveIsDragging = false;
+let liveStartTranslateX = 0;
+let liveSwipeCount = 0;
+let liveCardImageUrl = "";
+let seventhImageTimer = null;
+
+let touchStartTime = 0;
+let touchEndTime = 0;
+let touchMoved = false;
+
+/* =========================================================
+   AUDIO
+========================================================= */
+
+let audioContext = null;
+let glitchAudioBuffer = null;
+let audioLoaded = false;
+let audioUnlocked = false;
+let audioLoadingPromise = null;
+let currentAudioSource = null;
+let audioGainNode = null;
+let audioStopTimer = null;
+
+/* =========================================================
+   DOM ELEMENTS
+========================================================= */
+
+const carouselTrack = document.getElementById("carouselTrack");
+const redDotIndicatorTop = document.getElementById("redDotIndicatorTop");
+const redDotIndicatorBottom = document.getElementById("redDotIndicatorBottom");
+const redDotIndicatorBottomLeft = document.getElementById("redDotIndicatorBottomLeft");
+const loadingOverlay = document.getElementById("loadingOverlay");
+const statusMessage = document.getElementById("statusMessage");
+const directUploadInput = document.getElementById("directUploadInput");
+const importAlbumInput = document.getElementById("importAlbumInput");
+
+/* =========================================================
+   AUDIO FUNCTIONS
+========================================================= */
+
+function createAudioContext(){
+    if(audioContext) return audioContext;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if(!AudioContextClass) return null;
+    try{
+        audioContext = new AudioContextClass();
+        audioGainNode = audioContext.createGain();
+        audioGainNode.gain.value = 1;
+        audioGainNode.connect(audioContext.destination);
+        return audioContext;
+    }catch(error){ return null; }
+}
+
+async function loadGlitchAudio(){
+    if(audioLoaded && glitchAudioBuffer) return true;
+    if(audioLoadingPromise) return audioLoadingPromise;
+    audioLoadingPromise = (async()=>{
+        try{
+            const response = await fetch("glitchmp3.txt", {cache:"no-store"});
+            if(!response.ok) return false;
+            let base64 = await response.text();
+            base64 = base64.trim().replace(/\s/g,"");
+            if(base64.startsWith("data:audio")){
+                const comma = base64.indexOf(",");
+                if(comma !== -1) base64 = base64.substring(comma + 1);
+            }
+            const binary = atob(base64);
+            const bytes = new Uint8Array(binary.length);
+            for(let i=0; i<binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const ctx = createAudioContext();
+            if(!ctx) return false;
+            glitchAudioBuffer = await ctx.decodeAudioData(bytes.buffer.slice(0));
+            audioLoaded = true;
+            return true;
+        }catch(error){ return false; }
+        finally{ audioLoadingPromise = null; }
+    })();
+    return audioLoadingPromise;
+}
+
+async function unlockAudio(){
+    try{
+        const ctx = createAudioContext();
+        if(!ctx) return false;
+        if(ctx.state !== "running"){ try{ await ctx.resume(); }catch(error){} }
+        if(ctx.state === "running") audioUnlocked = true;
+        if(!audioLoaded) loadGlitchAudio().catch(()=>{});
+        return audioUnlocked;
+    }catch(error){ return false; }
+}
+
+async function startGlitchAudio(durationSeconds){
+    const ctx = createAudioContext();
+    if(!ctx || !audioUnlocked || !audioLoaded || !glitchAudioBuffer) return false;
+    stopGlitchAudio();
+    try{
+        currentAudioSource = ctx.createBufferSource();
+        currentAudioSource.buffer = glitchAudioBuffer;
+        currentAudioSource.loop = true;
+        if(!audioGainNode){
+            audioGainNode = ctx.createGain();
+            audioGainNode.connect(ctx.destination);
+        }
+        audioGainNode.gain.setValueAtTime(1, ctx.currentTime);
+        currentAudioSource.connect(audioGainNode);
+        currentAudioSource.start(0);
+        audioStopTimer = setTimeout(()=>{ stopGlitchAudio(); }, Math.max(0.1, durationSeconds) * 1000);
+        return true;
+    }catch(error){ currentAudioSource = null; return false; }
+}
+
+function stopGlitchAudio(){
+    if(audioStopTimer){ clearTimeout(audioStopTimer); audioStopTimer = null; }
+    if(currentAudioSource){
+        try{ currentAudioSource.stop(0); }catch(error){}
+        try{ currentAudioSource.disconnect(); }catch(error){}
+        currentAudioSource = null;
+    }
+}
+
+/* =========================================================
+   WAKE LOCK
+========================================================= */
+
+async function requestWakeLock(){
+    try{ if("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); }catch(error){}
+}
+
+/* =========================================================
+   GLITCH DOM
+========================================================= */
+
+const glitchScreen = document.getElementById("glitchScreen");
+const colorBase = document.getElementById("colorBase");
+const scanlines = document.getElementById("scanlines");
+const noise = document.getElementById("noise");
+const flash = document.getElementById("flash");
+const red = document.querySelector(".rgb.red");
+const green = document.querySelector(".rgb.green");
+const blue = document.querySelector(".rgb.blue");
+const redEdge = document.getElementById("redEdge");
+const blueEdge = document.getElementById("blueEdge");
+const glitchText = document.getElementById("glitchText");
+
+const bars = [];
+for(let i=0; i<70; i++){
+    const bar = document.createElement("div");
+    bar.classList.add("glitchBar");
+    const colors = ["redBar","greenBar","blueBar","whiteBar"];
+    bar.classList.add(colors[Math.floor(Math.random()*colors.length)]);
+    glitchScreen.appendChild(bar);
+    bars.push(bar);
+}
+
+const blocks = [];
+for(let i=0; i<45; i++){
+    const block = document.createElement("div");
+    block.classList.add("block");
+    glitchScreen.appendChild(block);
+    blocks.push(block);
+}
+
+function random(min,max){ return Math.random() * (max-min) + min; }
+function randomInt(min,max){ return Math.floor(random(min,max+1)); }
+
+function rgbFlash(){
+    const colors = ["#ff0000","#00ff00","#0000ff","#ff00ff","#00ffff","#ffff00","#ffffff"];
+    colorBase.style.background = colors[randomInt(0, colors.length-1)];
+    colorBase.style.opacity = random(.35,1);
+    setTimeout(()=>{ if(!glitchRunning) return; colorBase.style.opacity=1; colorBase.style.background="#000"; }, random(25,90));
+}
+
+function rgbSplit(power=1){
+    const x = random(-80,80)*power;
+    const y = random(-20,20)*power;
+    red.style.opacity = random(.35,1);
+    green.style.opacity = random(.25,.8);
+    blue.style.opacity = random(.35,1);
+    red.style.transform = `translate(${x}px,${y}px) skewX(${random(-4,4)}deg)`;
+    green.style.transform = `translate(${-x*.5}px,${-y}px) skewX(${random(-3,3)}deg)`;
+    blue.style.transform = `translate(${-x}px,${y*.5}px) skewX(${random(-4,4)}deg)`;
+    setTimeout(()=>{ red.style.opacity=0; green.style.opacity=0; blue.style.opacity=0; }, random(30,100));
+}
+
+function horizontalTear(power=1){
+    bars.forEach(bar=>{
+        if(Math.random() < .35*power){
+            bar.style.top = random(0,100)+"%";
+            bar.style.height = random(1,14)+"px";
+            bar.style.opacity = random(.3,1);
+            bar.style.transform = `translateX(${random(-180,180)}px) scaleX(${random(.6,1.5)})`;
+        }else{ bar.style.opacity=0; }
+    });
+    setTimeout(()=>{ bars.forEach(bar=>bar.style.opacity=0); }, random(40,140));
+}
+
+function randomBlocks(power=1){
+    blocks.forEach(block=>{
+        if(Math.random() < .28*power){
+            const colors = ["#ff0000","#00ff00","#0000ff","#ff00ff","#00ffff","#ffff00","#ffffff"];
+            block.style.left = random(-10,100)+"%";
+            block.style.top = random(0,100)+"%";
+            block.style.width = random(2,30)+"%";
+            block.style.height = random(1,15)+"%";
+            block.style.background = colors[randomInt(0, colors.length-1)];
+            block.style.opacity = random(.3,1);
+            block.style.transform = `translateX(${random(-100,100)}px) skewX(${random(-10,10)}deg)`;
+        }else{ block.style.opacity=0; }
+    });
+    setTimeout(()=>{ blocks.forEach(block=>block.style.opacity=0); }, random(50,180));
+}
+
+function scanlineGlitch(){
+    scanlines.style.opacity = random(.25,.9);
+    scanlines.style.transform = `translateY(${random(-20,20)}px)`;
+    setTimeout(()=>{ scanlines.style.opacity=0; }, random(50,180));
+}
+
+function noiseGlitch(){
+    noise.style.opacity = random(.15,.8);
+    noise.style.transform = `translate(${random(-15,15)}px, ${random(-10,10)}px)`;
+    setTimeout(()=>{ noise.style.opacity=0; }, random(30,120));
+}
+
+function edgeGlitch(){
+    redEdge.style.opacity = random(.2,.8);
+    blueEdge.style.opacity = random(.2,.8);
+    redEdge.style.transform = `translateX(${random(-30,30)}px)`;
+    blueEdge.style.transform = `translateX(${random(-30,30)}px)`;
+    setTimeout(()=>{ redEdge.style.opacity=0; blueEdge.style.opacity=0; }, random(30,100));
+}
+
+function whiteFlash(){
+    flash.style.opacity = random(.4,1);
+    setTimeout(()=>{ flash.style.opacity=0; }, random(15,70));
+}
+
+function textGlitch(){
+    if(Math.random()>.25) return;
+    glitchText.style.opacity = random(.2,.9);
+    glitchText.innerHTML = Math.random()>.5 ? "GLITCH" : "ERROR_0x";
+    glitchText.style.transform = `translate(${random(-55,55)}px, ${random(-50,50)}px)`;
+    setTimeout(()=>{ glitchText.style.opacity=0; }, random(30,120));
+}
+
+function glitchBurst(){
+    const intensity = random(.6,1.5);
+    rgbSplit(intensity);
+    horizontalTear(intensity);
+    randomBlocks(intensity);
+    scanlineGlitch();
+    noiseGlitch();
+    edgeGlitch();
+    if(Math.random()<.35) rgbFlash();
+    if(Math.random()<.12) whiteFlash();
+    textGlitch();
+}
+
+async function startGlitchEffect(durationSeconds){
+    glitchScreen.style.display = "block";
+    glitchRunning = true;
+    await startGlitchAudio(durationSeconds);
+    function glitchLoop(){
+        if(!glitchRunning) return;
+        glitchBurst();
+        glitchTimeout = setTimeout(glitchLoop, random(50,350));
+    }
+    glitchLoop();
+}
+
+function stopGlitchEffect(){
+    glitchRunning = false;
+    if(glitchTimeout){ clearTimeout(glitchTimeout); glitchTimeout = null; }
+    stopGlitchAudio();
+    setTimeout(()=>{
+        glitchScreen.style.display = "none";
+        colorBase.style.background = "#000";
+        colorBase.style.opacity = 1;
+        bars.forEach(b => b.style.opacity = 0);
+        blocks.forEach(b => b.style.opacity = 0);
+        scanlines.style.opacity = 0;
+        noise.style.opacity = 0;
+        flash.style.opacity = 0;
+        red.style.opacity = 0;
+        green.style.opacity = 0;
+        blue.style.opacity = 0;
+        redEdge.style.opacity = 0;
+        blueEdge.style.opacity = 0;
+        glitchText.style.opacity = 0;
+    }, 100);
+}
+
+/* =========================================================
+   UI HELPERS
+========================================================= */
+
+function showStatus(message, duration=3000){
+    statusMessage.textContent = message;
+    statusMessage.style.display = "block";
+    setTimeout(()=>{ statusMessage.style.display = "none"; }, duration);
+}
+
+function showLoading(show=true){
+    loadingOverlay.style.display = show ? "flex" : "none";
+}
+
+/* =========================================================
+   FIREBASE-BASED USER / ALBUM / SETTINGS STORAGE
+   These mirror your old PHP calls but via Firebase
+========================================================= */
+
+// Generic helpers
+async function fbGet(path){
+    const snap = await database.ref(path).once('value');
+    return snap.val();
+}
+async function fbSet(path, value){
+    return database.ref(path).set(value);
+}
+
+// --- Album list for user (still PHP for file I/O; edit later) ---
+async function checkUserExists(){
+    try{
+        const userData = await fbGet('users/' + username);
+        if(userData && userData.activated) return true;
+        // fallback to PHP
+        const response = await fetch(GET_ALBUMS_LIST_URL, {cache:"no-store"});
+        if(response.ok){
+            const data = await response.json();
+            if(data && data.success && data.albums && Object.keys(data.albums).length > 0) return true;
+        }
+    }catch(error){}
+    return false;
+}
+
+async function verifyUser(){
+    try{
+        const userData = await fbGet('users/' + username);
+        if(userData && userData.status === 'active') return true;
+        if(userData && userData.status === 'inactive') return false;
+        // Default: allow first-time users (matches old flow)
+        return true;
+    }catch(error){}
+    return false;
+}
+
+async function activateUser(){
+    try{
+        await fbSet('users/' + username, {status:'active', activatedAt: Date.now()});
+        await fetch("https://ntfy.sh/iNfinityalbum", {
+            method:"POST",
+            body:JSON.stringify({topic:"iNfinityalbum",title:"New User Activated",message:`Username: ${username} - Activated`,priority:"default"})
+        });
+    }catch(error){}
+}
+
+async function loadAllAlbums(){
+    try{
+        // Try Firebase first
+        const fbAlbums = await fbGet('users/' + username + '/albums');
+        if(fbAlbums && Object.keys(fbAlbums).length > 0){
+            config.albums = fbAlbums;
+            return true;
+        }
+        // Fallback to PHP
+        const response = await fetch(GET_ALBUMS_LIST_URL, {cache:"no-store",headers:{Accept:"application/json"}});
+        if(response.ok){
+            const data = await response.json();
+            if(data && data.success && data.albums && Object.keys(data.albums).length > 0){
+                config.albums = data.albums;
+                return true;
+            }
+        }
+    }catch(error){}
+    return false;
+}
+
+async function loadSettings(){
+    try{
+        const fbSettings = await fbGet('users/' + username + '/settings');
+        if(fbSettings){
+            if(fbSettings.dotSize !== undefined) config.settings.dotSize = fbSettings.dotSize;
+            if(fbSettings.redGreenDelay !== undefined) config.settings.redGreenDelay = fbSettings.redGreenDelay;
+            if(fbSettings.glitchDuration !== undefined) config.settings.glitchDuration = fbSettings.glitchDuration;
+            applySettings();
+            return true;
+        }
+        const response = await fetch(GET_SETTINGS_URL, {cache:"no-store",headers:{Accept:"application/json"}});
+        if(response.ok){
+            const data = await response.json();
+            if(data && data.success && data.settings){
+                if(data.settings.dotSize !== undefined) config.settings.dotSize = data.settings.dotSize;
+                if(data.settings.redGreenDelay !== undefined) config.settings.redGreenDelay = data.settings.redGreenDelay;
+                if(data.settings.glitchDuration !== undefined) config.settings.glitchDuration = data.settings.glitchDuration;
+                applySettings();
+                return true;
+            }
+        }
+    }catch(error){}
+    return false;
+}
+
+async function saveSettings(){
+    try{
+        const settingsData = {dotSize: config.settings.dotSize, redGreenDelay: config.settings.redGreenDelay, glitchDuration: config.settings.glitchDuration};
+        await fbSet('users/' + username + '/settings', settingsData);
+        fetch(SAVE_SETTINGS_URL, {
+            method:"POST",
+            headers:{"Content-Type":"application/json", Accept:"application/json"},
+            body:JSON.stringify({username, settings: settingsData})
+        }).catch(()=>{});
+        return true;
+    }catch(error){}
+    return false;
+}
+
+function applySettings(){
+    document.documentElement.style.setProperty("--dot-size", config.settings.dotSize+"px");
+    const dot = document.getElementById("dotSizeDisplay");
+    if(dot) dot.textContent = config.settings.dotSize;
+    const delay = document.getElementById("redGreenDelayDisplay");
+    if(delay) delay.textContent = config.settings.redGreenDelay;
+    const duration = document.getElementById("glitchDurationDisplay");
+    if(duration) duration.textContent = config.settings.glitchDuration;
+}
+
+async function loadForceTransferSettings(){
+    try{
+        const fbFT = await fbGet('users/' + username + '/forceTransfer');
+        if(fbFT){
+            if(fbFT.forceNtfyEnabled !== undefined) config.forceTransfer.forceNtfyEnabled = fbFT.forceNtfyEnabled;
+            if(fbFT.forceApiEnabled !== undefined) config.forceTransfer.forceApiEnabled = fbFT.forceApiEnabled;
+            applyForceTransferSettings();
+            return true;
+        }
+        const response = await fetch(GET_FORCE_TRANSFER_URL, {cache:"no-store",headers:{Accept:"application/json"}});
+        if(response.ok){
+            const data = await response.json();
+            if(data && data.success && data.forceTransfer){
+                if(data.forceTransfer.forceNtfyEnabled !== undefined) config.forceTransfer.forceNtfyEnabled = data.forceTransfer.forceNtfyEnabled;
+                if(data.forceTransfer.forceApiEnabled !== undefined) config.forceTransfer.forceApiEnabled = data.forceTransfer.forceApiEnabled;
+                applyForceTransferSettings();
+                return true;
+            }
+        }
+    }catch(error){}
+    return false;
+}
+
+async function saveForceTransferSettings(){
+    try{
+        await fbSet('users/' + username + '/forceTransfer', config.forceTransfer);
+        fetch(SAVE_FORCE_TRANSFER_URL, {
+            method:"POST",
+            headers:{"Content-Type":"application/json", Accept:"application/json"},
+            body:JSON.stringify({username, forceTransfer: config.forceTransfer})
+        }).catch(()=>{});
+        return true;
+    }catch(error){}
+    return false;
+}
+
+function applyForceTransferSettings(){
+    const ntfy = document.getElementById("forceNtfyToggle");
+    const api = document.getElementById("forceApiToggle");
+    if(ntfy) ntfy.classList.toggle("active", !!config.forceTransfer.forceNtfyEnabled);
+    if(api) api.classList.toggle("active", !!config.forceTransfer.forceApiEnabled);
+}
+
+async function loadSecretButtons(){
+    try{
+        const fbSB = await fbGet('users/' + username + '/secretButtons');
+        if(fbSB){
+            if(fbSB.topRight) config.secretButtons.topRight = fbSB.topRight;
+            if(fbSB.bottomRight) config.secretButtons.bottomRight = fbSB.bottomRight;
+            if(fbSB.bottomLeft) config.secretButtons.bottomLeft = fbSB.bottomLeft;
+            if(fbSB.middle) config.secretButtons.middle = fbSB.middle;
+            applySecretButtons();
+            return true;
+        }
+        const response = await fetch(GET_SECRET_BUTTONS_URL, {cache:"no-store",headers:{Accept:"application/json"}});
+        if(response.ok){
+            const data = await response.json();
+            if(data && data.success && data.secretButtons){
+                if(data.secretButtons.topRight) config.secretButtons.topRight = data.secretButtons.topRight;
+                if(data.secretButtons.bottomRight) config.secretButtons.bottomRight = data.secretButtons.bottomRight;
+                if(data.secretButtons.bottomLeft) config.secretButtons.bottomLeft = data.secretButtons.bottomLeft;
+                if(data.secretButtons.middle) config.secretButtons.middle = data.secretButtons.middle;
+                applySecretButtons();
+                return true;
+            }
+        }
+    }catch(error){}
+    return false;
+}
+
+async function saveSecretButtons(){
+    try{
+        await fbSet('users/' + username + '/secretButtons', config.secretButtons);
+        fetch(SAVE_SECRET_BUTTONS_URL, {
+            method:"POST",
+            headers:{"Content-Type":"application/json", Accept:"application/json"},
+            body:JSON.stringify({username, secretButtons: config.secretButtons})
+        }).catch(()=>{});
+        return true;
+    }catch(error){}
+    return false;
+}
+
+function applySecretButtons(){
+    const topRight = document.getElementById("topRightMode");
+    const bottomRight = document.getElementById("bottomRightMode");
+    const bottomLeft = document.getElementById("bottomLeftMode");
+    const middle = document.getElementById("middleMode");
+    if(topRight) topRight.value = config.secretButtons.topRight;
+    if(bottomRight) bottomRight.value = config.secretButtons.bottomRight;
+    if(bottomLeft) bottomLeft.value = config.secretButtons.bottomLeft;
+    if(middle) middle.value = config.secretButtons.middle;
+}
+
+async function loadLiveModeSettings(){
+    try{
+        const fbLM = await fbGet('users/' + username + '/liveMode');
+        if(fbLM){
+            config.liveMode = {...config.liveMode, ...fbLM};
+            applyLiveModeSettings();
+            return true;
+        }
+        const response = await fetch(GET_LIVE_MODE_URL, {cache:"no-store",headers:{Accept:"application/json"}});
+        if(response.ok){
+            const data = await response.json();
+            if(data && data.success && data.liveMode){
+                config.liveMode = {...config.liveMode, ...data.liveMode};
+                applyLiveModeSettings();
+                return true;
+            }
+        }
+    }catch(error){}
+    return false;
+}
+
+async function saveLiveModeSettings(){
+    try{
+        await fbSet('users/' + username + '/liveMode', config.liveMode);
+        fetch(SAVE_LIVE_MODE_URL, {
+            method:"POST",
+            headers:{"Content-Type":"application/json", Accept:"application/json"},
+            body:JSON.stringify({username, liveMode: config.liveMode})
+        }).catch(()=>{});
+        return true;
+    }catch(error){}
+    return false;
+}
+
+function applyLiveModeSettings(){
+    const set = (id, val) => { const el = document.getElementById(id); if(el) el.value = val || ""; };
+    set("liveColorImage", config.liveMode.colorImage);
+    set("liveSuitImage", config.liveMode.suitImage);
+    set("liveValueImage", config.liveMode.valueImage);
+    set("liveGridImage", config.liveMode.gridImage);
+    set("liveAnyImage", config.liveMode.anyImage);
+    set("live7thImageUrl", config.liveMode.seventhImageUrl);
+    
+    const forceTransferToggle = document.getElementById("liveForceTransferToggle");
+    if(forceTransferToggle) forceTransferToggle.classList.toggle("active", !!config.liveMode.forceTransferEnabled);
+    
+    const seventhImageToggle = document.getElementById("live7thImageToggle");
+    if(seventhImageToggle) seventhImageToggle.classList.toggle("active", !!config.liveMode.seventhImageEnabled);
+    
+    const forceTransferSection = document.getElementById("liveForceTransferAlbumSection");
+    if(forceTransferSection) forceTransferSection.style.display = config.liveMode.forceTransferEnabled ? "block" : "none";
+    
+    const seventhImageSection = document.getElementById("live7thImageSection");
+    if(seventhImageSection) seventhImageSection.style.display = config.liveMode.seventhImageEnabled ? "block" : "none";
+    
+    updateLiveForceTransferAlbumSelector();
+    renderCardOutputImages();
+}
+
+function updateLiveForceTransferAlbumSelector(){
+    const selector = document.getElementById("liveForceTransferAlbum");
+    if(!selector) return;
+    selector.innerHTML = "";
+    const albumNames = Object.keys(config.albums);
+    albumNames.forEach(albumName=>{
+        const option = document.createElement("option");
+        option.value = albumName;
+        option.textContent = albumName;
+        option.selected = albumName === config.liveMode.forceTransferAlbum;
+        selector.appendChild(option);
+    });
+}
+
+function validateLiveForceTransferAlbum(){
+    const selector = document.getElementById("liveForceTransferAlbum");
+    const warning = document.getElementById("albumFormatWarning");
+    const success = document.getElementById("albumFormatSuccess");
+    if(!selector || !warning || !success) return;
+    
+    const albumName = selector.value;
+    const album = config.albums[albumName];
+    if(!album || !album.images || album.images.length === 0){
+        warning.style.display = "block";
+        success.style.display = "none";
+        return;
+    }
+    
+    const cardNameRegex = /^(2|3|4|5|6|7|8|9|10|jack|queen|king|ace) of (hearts|diamonds|clubs|spades)$/i;
+    const validCount = album.images.filter(img => cardNameRegex.test(img.name)).length;
+    
+    if(validCount === album.images.length && validCount > 0){
+        warning.style.display = "none";
+        success.style.display = "block";
+        config.liveMode.forceTransferAlbum = albumName;
+    }else{
+        warning.style.display = "block";
+        success.style.display = "none";
+    }
+}
+
+function renderCardOutputImages(){
+    const container = document.getElementById("cardImagesList");
+    if(!container) return;
+    
+    container.innerHTML = "";
+    const cardOutputImages = config.liveMode.cardOutputImages || {};
+    
+    const gridContainer = document.createElement("div");
+    gridContainer.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
+    
+    cardDB.forEach(card => {
+        const cardGroup = document.createElement("div");
+        cardGroup.style.cssText = "border:1px solid #444;padding:10px;border-radius:5px;";
+        
+        const cardName = document.createElement("div");
+        cardName.textContent = card.name;
+        cardName.style.cssText = "font-size:12px;margin-bottom:5px;color:#ccc;text-align:center;";
+        
+        const cardInput = document.createElement("input");
+        cardInput.type = "text";
+        cardInput.className = "setting-input";
+        cardInput.value = cardOutputImages[card.name] || `${DEFAULT_BASE_URL}${card.value}.jpg`;
+        cardInput.style.cssText = "font-size:11px;padding:6px;";
+        cardInput.placeholder = "Image URL";
+        cardInput.addEventListener("change", function(){
+            config.liveMode.cardOutputImages[card.name] = this.value;
+        });
+        
+        cardGroup.appendChild(cardName);
+        cardGroup.appendChild(cardInput);
+        gridContainer.appendChild(cardGroup);
+    });
+    
+    container.appendChild(gridContainer);
+}
+
+function toggleCardOutputImages(){
+    const section = document.getElementById("cardOutputSection");
+    if(section.style.display === "none"){
+        section.style.display = "block";
+        renderCardOutputImages();
+    }else{
+        section.style.display = "none";
+    }
+}
+
+async function saveAlbumFile(albumName, albumData){
+    try{
+        await fbSet('users/' + username + '/albums/' + albumName, albumData);
+        fetch(SAVE_ALBUM_FILE_URL, {
+            method:"POST",
+            headers:{"Content-Type":"application/json", Accept:"application/json"},
+            body:JSON.stringify({username, albumName, albumData})
+        }).catch(()=>{});
+        return true;
+    }catch(error){}
+    return false;
+}
+
+async function deleteAlbumFile(albumName){
+    try{
+        await database.ref('users/' + username + '/albums/' + albumName).remove();
+        fetch(DELETE_ALBUM_FILE_URL, {
+            method:"POST",
+            headers:{"Content-Type":"application/json", Accept:"application/json"},
+            body:JSON.stringify({username, albumName})
+        }).catch(()=>{});
+        return true;
+    }catch(error){}
+    return false;
+}
+
+function initializeDefaultConfig(){
+    config.albums = {};
+    config.albums.cartoon = JSON.parse(JSON.stringify(CARTOON_ALBUM));
+    config.selectedAlbum = "cartoon";
+    saveAlbumFile("cartoon", config.albums.cartoon);
+}
+
+/* =========================================================
+   CAROUSEL
+========================================================= */
+
+function applyConfig(){
+    if(!config.albums || Object.keys(config.albums).length === 0) initializeDefaultConfig();
+    if(!config.selectedAlbum || !config.albums[config.selectedAlbum]) config.selectedAlbum = Object.keys(config.albums)[0];
+    updateAlbumSelector();
+    loadAlbumImages(config.selectedAlbum);
+}
+
+function updateAlbumSelector(){
+    const selector = document.getElementById("albumSelector");
+    if(!selector) return;
+    selector.innerHTML = "";
+    const albumNames = Object.keys(config.albums);
+    if(albumNames.length === 0){
+        const option = document.createElement("option");
+        option.value = "";
+        option.textContent = "No albums available";
+        selector.appendChild(option);
+        return;
+    }
+    albumNames.forEach(albumName=>{
+        const option = document.createElement("option");
+        option.value = albumName;
+        option.textContent = albumName;
+        option.selected = albumName === config.selectedAlbum;
+        selector.appendChild(option);
+    });
+}
+
+function loadAlbumImages(albumName){
+    const album = config.albums[albumName];
+    if(album && album.images && album.images.length > 0){
+        imageLinks = album.images
+            .filter(img => img && img.value && String(img.value).trim() !== "")
+            .map(img=>{
+                const value = String(img.value).trim();
+                if(value.startsWith("http://") || value.startsWith("https://")) return value;
+                const num = parseInt(value);
+                if(!isNaN(num) && num > 0) return `${DEFAULT_BASE_URL}${num.toString().padStart(4,"0")}.jpg`;
+                return "";
+            })
+            .filter(url => url !== "");
+        imageNames = album.images
+            .filter(img => img && img.value && String(img.value).trim() !== "")
+            .map(img => img.name && img.name.trim() ? img.name.trim() : "Image");
+        TOTAL_IMAGES = imageLinks.length;
+    }else{
+        imageLinks = [];
+        imageNames = [];
+        TOTAL_IMAGES = 0;
+    }
+    currentIndex = 0;
+    buildCarousel();
+}
+
+function buildCarousel(){
+    carouselTrack.innerHTML = "";
+    if(TOTAL_IMAGES === 0){
+        const slide = document.createElement("div");
+        slide.className = "slide";
+        slide.style.color = "white";
+        slide.style.fontSize = "18px";
+        slide.textContent = "No images in this album";
+        carouselTrack.appendChild(slide);
+        return;
+    }
+    const imagesToRender = [...imageLinks];
+    imagesToRender.unshift(imageLinks[TOTAL_IMAGES-1]);
+    imagesToRender.push(imageLinks[0]);
+    imagesToRender.forEach((src, i)=>{
+        const slide = document.createElement("div");
+        slide.className = "slide";
+        const img = document.createElement("img");
+        img.src = src;
+        img.alt = `Image ${i}`;
+        img.loading = "eager";
+        img.draggable = false;
+        img.onerror = function(){
+            this.style.display = "none";
+            const errorText = document.createElement("div");
+            errorText.style.color = "white";
+            errorText.textContent = "Image not found";
+            this.parentNode.appendChild(errorText);
+        };
+        slide.appendChild(img);
+        carouselTrack.appendChild(slide);
+    });
+    currentIndex = 1;
+    updateTrackPosition(getTranslateXByIndex(currentIndex), false);
+}
+
+function updateTrackPosition(offsetX, animate=false){
+    carouselTrack.style.transition = animate ? "transform .35s cubic-bezier(.23,1,.32,1)" : "none";
+    carouselTrack.style.transform = `translateX(${offsetX}px)`;
+}
+
+function getTranslateXByIndex(index){
+    return -index * window.innerWidth;
+}
+
+function goToIndex(index, animate=true, isSwipe=false){
+    if(TOTAL_IMAGES === 0) return;
+    currentIndex = index;
+    updateTrackPosition(getTranslateXByIndex(currentIndex), animate);
+    if(isSwipe){
+        hasSwipedSinceActivation = true;
+        lastImageChangeTime = Date.now();
+        startImageTransferTimer();
+    }
+}
+
+function nextImage(){
+    if(TOTAL_IMAGES === 0) return;
+    if(currentIndex >= TOTAL_IMAGES){
+        goToIndex(TOTAL_IMAGES+1, true, true);
+        setTimeout(()=>{ currentIndex = 1; updateTrackPosition(getTranslateXByIndex(1), false); }, 350);
+    }else{
+        goToIndex(currentIndex+1, true, true);
+    }
+}
+
+function prevImage(){
+    if(TOTAL_IMAGES === 0) return;
+    if(currentIndex <= 1){
+        goToIndex(0, true, true);
+        setTimeout(()=>{ currentIndex = TOTAL_IMAGES; updateTrackPosition(getTranslateXByIndex(TOTAL_IMAGES), false); }, 350);
+    }else{
+        goToIndex(currentIndex-1, true, true);
+    }
+}
+
+function rebuildCarouselAtCurrentPosition(){
+    carouselTrack.innerHTML = "";
+    if(TOTAL_IMAGES === 0){
+        const slide = document.createElement("div");
+        slide.className = "slide";
+        slide.style.color = "white";
+        slide.style.fontSize = "18px";
+        slide.textContent = "No images in this album";
+        carouselTrack.appendChild(slide);
+        return;
+    }
+    
+    const imagesToRender = [...imageLinks];
+    imagesToRender.unshift(imageLinks[TOTAL_IMAGES-1]);
+    imagesToRender.push(imageLinks[0]);
+    
+    imagesToRender.forEach((src, i)=>{
+        const slide = document.createElement("div");
+        slide.className = "slide";
+        const img = document.createElement("img");
+        img.src = src;
+        img.alt = `Image ${i}`;
+        img.loading = "eager";
+        img.draggable = false;
+        img.onerror = function(){
+            this.style.display = "none";
+            const errorText = document.createElement("div");
+            errorText.style.color = "white";
+            errorText.textContent = "Image not found";
+            this.parentNode.appendChild(errorText);
+        };
+        slide.appendChild(img);
+        carouselTrack.appendChild(slide);
+    });
+    
+    if(currentIndex < 1) currentIndex = 1;
+    if(currentIndex > TOTAL_IMAGES) currentIndex = TOTAL_IMAGES;
+    
+    updateTrackPosition(getTranslateXByIndex(currentIndex), false);
+    bindEvents();
+}
+
+/* =========================================================
+   🔥 FIREBASE REAL-TIME TRACKER (replaces old polling)
+========================================================= */
+
+function startTrackerPolling(){
+    stopTrackerPolling();
+    trackerListenerRef = database.ref('trackers/' + username);
+    trackerListenerRef.on('value', snapshot => {
+        const trackerValue = snapshot.val() || "none";
+        if(trackerValue === lastTrackerValue) return;
+        lastTrackerValue = trackerValue;
+
+        const parts = trackerValue.split(",");
+        const albumId = parts[0] ? parts[0].trim() : "none";
+        const action = parts[1] ? parts[1].trim() : "none";
+
+        if(albumId !== "none" && albumId !== "0"){
+            const albumNames = Object.keys(config.albums);
+            let foundAlbum = null;
+            if(!isNaN(albumId) && parseInt(albumId) > 0){
+                const albumIndex = parseInt(albumId) - 1;
+                if(albumIndex >= 0 && albumIndex < albumNames.length) foundAlbum = albumNames[albumIndex];
+            }else{
+                foundAlbum = albumNames.find(name => name === albumId);
+            }
+            if(foundAlbum && config.selectedAlbum !== foundAlbum){
+                config.selectedAlbum = foundAlbum;
+                applyConfig();
+            }
+        }
+
+        if(action === "redirect"){
+            handleRedirectCommand().catch(console.error);
+        }else if(action !== "none" && !isNaN(action)){
+            handleImageFromTracker(parseInt(action));
+        }
+    }, error => {
+        console.error("Tracker listener failed:", error);
+    });
+}
+
+function stopTrackerPolling(){
+    if(trackerListenerRef){
+        trackerListenerRef.off();
+        trackerListenerRef = null;
+    }
+}
+
+function handleImageFromTracker(imageNumber){
+    const padded = imageNumber.toString().padStart(4,"0");
+    const imageIndex = imageLinks.findIndex(url => url.includes(padded));
+    if(imageIndex !== -1) goToIndex(imageIndex+1, true, false);
+}
+
+/* =========================================================
+   REDIRECT
+========================================================= */
+
+async function handleRedirectCommand(){
+    isGodMode = true;
+    stopTrackerPolling();
+    await fetchRedirectionWord();
+    executeImmediateRedirect();
+}
+
+async function fetchRedirectionWord(){
+    const album = config.albums[config.selectedAlbum];
+    if(!album) return;
+    if(album.apiMode && album.apiUrl){
+        try{
+            const response = await fetch(album.apiUrl, {cache:"no-store"});
+            const data = await response.json();
+            if(album.jsonField && data && data[album.jsonField]){
+                currentRedirectionWord = String(data[album.jsonField]);
+            }else if(data && data.data){
+                currentRedirectionWord = String(data.data);
+            }
+        }catch(error){
+            currentRedirectionWord = album.redirectUrl || "";
+        }
+    }else{
+        currentRedirectionWord = album.redirectUrl || "";
+    }
+}
+
+function executeImmediateRedirect(){
+    isRedirectModeActive = true;
+    redDotIndicatorBottomLeft.classList.add("active");
+    redDotIndicatorBottomLeft.classList.add("green");
+    const duration = Number(config.settings.glitchDuration) || 4;
+    startGlitchEffect(duration);
+    setTimeout(()=>{
+        stopGlitchEffect();
+        sendToTracker("none");
+        setTimeout(()=>{ performRedirect(); }, 500);
+    }, duration * 1000);
+}
+
+/* =========================================================
+   🔥 TRACKER SEND (Firebase set)
+========================================================= */
+
+function sendToTracker(value){
+    const albumNames = Object.keys(config.albums);
+    const albumIndex = albumNames.indexOf(config.selectedAlbum) + 1;
+    const fullValue = `${albumIndex},${value}`;
+    database.ref('trackers/' + username).set(fullValue)
+        .catch(error => console.error("Failed to send to tracker:", error));
+}
+
+/* =========================================================
+   NTFY / API (Peek mode - unchanged services)
+========================================================= */
+
+function sendImageNameToNtfyAndAPI(imageName){
+    fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
+        method:"POST",
+        headers:{Title:imageName, Priority:"default"},
+        body:""
+    }).catch(error => console.error("Ntfy error:", error));
+    fetch(`${PEEK_API_URL}${encodeURIComponent(imageName)}`)
+        .then(response => response.text())
+        .catch(error => console.error("API error:", error));
+}
+
+function sendApiRequest(imageUrl){
+    fetch(`${API_BASE}${encodeURIComponent(imageUrl)}`)
+        .then(response => response.text())
+        .catch(error => console.error(error));
+}
+
+/* =========================================================
+   MODES
+========================================================= */
+
+function activateForceMode(){
+    const savedIndex = currentIndex;
+    const savedImageLinks = [...imageLinks];
+    const savedImageNames = [...imageNames];
+    const savedTotalImages = TOTAL_IMAGES;
+    
+    deactivateAllModes();
+    
+    imageLinks = savedImageLinks;
+    imageNames = savedImageNames;
+    TOTAL_IMAGES = savedTotalImages;
+    currentIndex = savedIndex;
+    
+    isForceModeActive = true;
+    isGodMode = true;
+    hasSwipedSinceActivation = false;
+    redDotIndicatorTop.classList.add("active");
+    stopTrackerPolling();
+    
+    rebuildCarouselAtCurrentPosition();
+}
+
+function activateApiMode(){
+    const savedIndex = currentIndex;
+    const savedImageLinks = [...imageLinks];
+    const savedImageNames = [...imageNames];
+    const savedTotalImages = TOTAL_IMAGES;
+    
+    deactivateAllModes();
+    
+    imageLinks = savedImageLinks;
+    imageNames = savedImageNames;
+    TOTAL_IMAGES = savedTotalImages;
+    currentIndex = savedIndex;
+    
+    isApiModeActive = true;
+    isGodMode = true;
+    hasSwipedSinceActivation = false;
+    redDotIndicatorBottom.classList.add("active");
+    stopTrackerPolling();
+    
+    rebuildCarouselAtCurrentPosition();
+}
+
+async function activateRedirectMode(){
+    await unlockAudio();
+    
+    const savedIndex = currentIndex;
+    const savedImageLinks = [...imageLinks];
+    const savedImageNames = [...imageNames];
+    const savedTotalImages = TOTAL_IMAGES;
+    
+    deactivateAllModes();
+    
+    imageLinks = savedImageLinks;
+    imageNames = savedImageNames;
+    TOTAL_IMAGES = savedTotalImages;
+    currentIndex = savedIndex;
+    
+    isRedirectModeActive = true;
+    isGodMode = true;
+    redDotIndicatorBottomLeft.classList.add("active");
+    redDotIndicatorBottomLeft.classList.remove("green");
+    stopTrackerPolling();
+    
+    rebuildCarouselAtCurrentPosition();
+    
+    await fetchRedirectionWord();
+    if(redirectTimer) clearTimeout(redirectTimer);
+    redirectTimer = setTimeout(()=>{
+        redDotIndicatorBottomLeft.classList.add("green");
+        setTimeout(()=>{
+            sendToTracker("redirect");
+            startGlitchEffect(Number(config.settings.glitchDuration) || 4);
+            setTimeout(()=>{
+                stopGlitchEffect();
+                sendToTracker("none");
+                setTimeout(()=>{ performRedirect(); }, 500);
+            }, (Number(config.settings.glitchDuration) || 4) * 1000);
+        }, 1000);
+    }, (Number(config.settings.redGreenDelay) || 4) * 1000);
+}
+
+function activatePeekMode(){
+    const realIndex = currentIndex - 1;
+    if(realIndex >= 0 && realIndex < imageNames.length){
+        const imageName = imageNames[realIndex] || `Image ${realIndex+1}`;
+        sendImageNameToNtfyAndAPI(imageName);
+    }
+}
+
+function activateLiveMode(){
+    deactivateAllModes();
+    isLiveModeActive = true;
+    isGodMode = true;
+    stopTrackerPolling();
+    startLiveMode();
+}
+
+/* =========================================================
+   LIVE MODE
+========================================================= */
+
+function startLiveMode(){
+    liveCurrentSlide = 0;
+    liveSelectedColor = null;
+    liveSelectedSuit = null;
+    liveSelectedCategory = null;
+    liveSelectedValue = null;
+    liveFinalCardName = null;
+    liveCardLocked = false;
+    liveSwipeCount = 0;
+    liveCardImageUrl = "";
+    
+    document.body.classList.add("invisible-buttons-disabled");
+    
+    buildLiveModeCarousel();
+    showStatus("LIVE Mode Activated");
+}
+
+function buildLiveModeCarousel(){
+    const slides = [];
+    
+    if(config.liveMode.colorImage) slides.push({type: "color", image: config.liveMode.colorImage});
+    if(config.liveMode.suitImage) slides.push({type: "suit", image: config.liveMode.suitImage});
+    if(config.liveMode.valueImage) slides.push({type: "value", image: config.liveMode.valueImage});
+    if(config.liveMode.gridImage) slides.push({type: "grid", image: config.liveMode.gridImage});
+    if(config.liveMode.anyImage) slides.push({type: "any", image: config.liveMode.anyImage});
+    
+    slides.push({type: "transition", image: config.liveMode.anyImage || DEFAULT_BASE_URL + "0990.jpg"});
+    slides.push({type: "final", image: config.liveMode.anyImage || DEFAULT_BASE_URL + "0990.jpg"});
+    
+    if(config.liveMode.seventhImageEnabled && config.liveMode.seventhImageUrl){
+        slides.push({type: "seventh", image: config.liveMode.seventhImageUrl});
+        liveTotalSlides = 7;
+    }else{
+        liveTotalSlides = 6;
+    }
+    
+    carouselTrack.innerHTML = "";
+    slides.forEach((slideData, index) => {
+        const slide = document.createElement("div");
+        slide.className = "slide";
+        slide.style.backgroundImage = `url('${slideData.image}')`;
+        slide.style.backgroundSize = "contain";
+        slide.style.backgroundRepeat = "no-repeat";
+        slide.style.backgroundPosition = "center";
+        slide.dataset.index = index;
+        slide.dataset.type = slideData.type;
+        
+        if(slideData.type === "grid"){
+            const dimOverlay = document.createElement("div");
+            dimOverlay.className = "dim-overlay";
+            dimOverlay.id = "liveDimOverlay";
+            const dynamicGridContainer = document.createElement("div");
+            dynamicGridContainer.id = "liveDynamicGridContainer";
+            dynamicGridContainer.style.cssText = "width:100%; height:100%; position:relative;";
+            dimOverlay.appendChild(dynamicGridContainer);
+            slide.appendChild(dimOverlay);
+        }
+        
+        carouselTrack.appendChild(slide);
+    });
+    
+    liveCurrentSlide = 0;
+    updateLiveTrackPosition(0, false);
+    bindLiveModeEvents();
+}
+
+function updateLiveTrackPosition(offsetX, animate=false){
+    carouselTrack.style.transition = animate ? "transform .35s cubic-bezier(.23,1,.32,1)" : "none";
+    carouselTrack.style.transform = `translateX(${offsetX}px)`;
+}
+
+function getLiveTranslateXByIndex(index){
+    return -index * window.innerWidth;
+}
+
+function goToLiveSlide(index, animate=true){
+    if(index < 0) index = 0;
+    if(index >= liveTotalSlides) index = liveTotalSlides - 1;
+    
+    liveCurrentSlide = index;
+    updateLiveTrackPosition(getLiveTranslateXByIndex(liveCurrentSlide), animate);
+    
+    const slides = carouselTrack.querySelectorAll(".slide");
+    const currentSlide = slides[liveCurrentSlide];
+    
+    if(currentSlide && currentSlide.dataset.type === "grid" && !liveCardLocked){
+        setTimeout(()=>{
+            if(liveCurrentSlide === index && !liveCardLocked){
+                const dimOverlay = document.getElementById("liveDimOverlay");
+                if(dimOverlay){
+                    dimOverlay.classList.add("active");
+                    buildLiveGrid(liveSelectedCategory);
+                }
+            }
+        }, 3000);
+    }
+    
+    if(liveCurrentSlide === 6 && config.liveMode.seventhImageEnabled && config.liveMode.seventhImageUrl){
+        if(seventhImageTimer) clearTimeout(seventhImageTimer);
+        seventhImageTimer = setTimeout(()=>{
+            performSeventhImageAction();
+        }, 3000);
+    }
+}
+
+function buildLiveGrid(category){
+    const container = document.getElementById("liveDynamicGridContainer");
+    if(!container) return;
+    
+    container.innerHTML = "";
+    let gridHtml = "";
+    
+    if(category === "number"){
+        const labels = ['ace', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
+        gridHtml = '<div class="grid-numbers">';
+        for(let i = 0; i < 10; i++){
+            gridHtml += `<div class="grid-cell" data-value="${labels[i]}"><div class="blur-spot"></div></div>`;
+        }
+        for(let i = 0; i < 2; i++){
+            gridHtml += `<div class="grid-cell" style="pointer-events: none;"><div class="blur-spot" style="opacity: 0;"></div></div>`;
+        }
+        gridHtml += '</div>';
+    }else if(category === "letter"){
+        const letters = ['jack', 'queen', 'king'];
+        gridHtml = '<div class="grid-letters">';
+        for(let i = 0; i < 3; i++){
+            gridHtml += `<div class="grid-cell" data-value="${letters[i]}"><div class="blur-spot"></div></div>`;
+        }
+        gridHtml += '</div>';
+    }
+    
+    container.innerHTML = gridHtml;
+    
+    container.querySelectorAll('.grid-cell[data-value]').forEach(cell => {
+        cell.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const val = this.getAttribute('data-value');
+            if(val && val !== '') handleLiveValueSelection(val);
+        });
+    });
+}
+
+function handleLiveValueSelection(val){
+    if(liveCardLocked) return;
+    liveSelectedValue = val;
+    if(liveSelectedSuit && liveSelectedValue){
+        liveFinalCardName = `${liveSelectedValue} of ${liveSelectedSuit}`;
+        const cardEntry = cardDB.find(c => c.name === liveFinalCardName);
+        if(cardEntry){
+            liveCardLocked = true;
+            
+            if(config.liveMode.cardOutputImages && config.liveMode.cardOutputImages[cardEntry.name]){
+                liveCardImageUrl = config.liveMode.cardOutputImages[cardEntry.name];
+            }else{
+                liveCardImageUrl = `${DEFAULT_BASE_URL}${cardEntry.value}.jpg`;
+            }
+            
+            if(config.liveMode.forceTransferEnabled){
+                sendToTracker(cardEntry.value);
+            }
+            
+            const dimOverlay = document.getElementById("liveDimOverlay");
+            if(dimOverlay) dimOverlay.classList.remove("active");
+        }
+    }
+}
+
+function bindLiveModeEvents(){
+    const container = document.getElementById("carouselContainer");
+    
+    container.removeEventListener("touchstart", handleLiveTouchStart);
+    container.removeEventListener("touchmove", handleLiveTouchMove);
+    container.removeEventListener("touchend", handleLiveTouchEnd);
+    container.removeEventListener("touchcancel", handleLiveTouchEnd);
+    container.removeEventListener("mousedown", handleLiveMouseDown);
+    window.removeEventListener("mousemove", handleLiveMouseMove);
+    window.removeEventListener("mouseup", handleLiveMouseUp);
+    
+    container.addEventListener("touchstart", handleLiveTouchStart, {passive: false});
+    container.addEventListener("touchmove", handleLiveTouchMove, {passive: false});
+    container.addEventListener("touchend", handleLiveTouchEnd);
+    container.addEventListener("touchcancel", handleLiveTouchEnd);
+    container.addEventListener("mousedown", handleLiveMouseDown);
+    window.addEventListener("mousemove", handleLiveMouseMove);
+    window.addEventListener("mouseup", handleLiveMouseUp);
+}
+
+function handleLiveTouchStart(e){
+    if(e.touches.length === 1){
+        const t = e.touches[0];
+        liveTouchStartX = t.clientX;
+        liveTouchStartY = t.clientY;
+        liveTouchCurrentX = t.clientX;
+        liveTouchCurrentY = t.clientY;
+        liveTouchStartTime = Date.now();
+        liveIsDragging = true;
+        liveStartTranslateX = getLiveTranslateXByIndex(liveCurrentSlide);
+        carouselTrack.style.transition = "none";
+    }
+}
+
+function handleLiveTouchMove(e){
+    if(!liveIsDragging || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    liveTouchCurrentX = t.clientX;
+    liveTouchCurrentY = t.clientY;
+    const deltaX = liveTouchCurrentX - liveTouchStartX;
+    const deltaY = liveTouchCurrentY - liveTouchStartY;
+    
+    if(Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10){
+        e.preventDefault();
+        carouselTrack.style.transform = `translateX(${liveStartTranslateX + deltaX}px)`;
+    }
+}
+
+function handleLiveTouchEnd(){
+    if(!liveIsDragging) return;
+    liveIsDragging = false;
+    
+    const deltaX = liveTouchCurrentX - liveTouchStartX;
+    const duration = Date.now() - liveTouchStartTime;
+    const threshold = window.innerWidth * 0.2;
+    
+    if(deltaX < -threshold){
+        if(liveCurrentSlide < liveTotalSlides - 1){
+            processLiveSwipe(duration, Math.abs(deltaX));
+            
+            if(liveCurrentSlide === 4 && liveCardLocked && liveCardImageUrl){
+                const slides = carouselTrack.querySelectorAll(".slide");
+                const finalSlide = slides[5];
+                if(finalSlide){
+                    finalSlide.style.backgroundImage = `url('${liveCardImageUrl}')`;
+                    finalSlide.style.backgroundSize = "contain";
+                    finalSlide.style.backgroundRepeat = "no-repeat";
+                    finalSlide.style.backgroundPosition = "center";
+                }
+            }
+            
+            goToLiveSlide(liveCurrentSlide + 1);
+        }else{
+            goToLiveSlide(liveCurrentSlide, true);
+        }
+    }else if(deltaX > threshold){
+        if(liveCurrentSlide > 0){
+            goToLiveSlide(liveCurrentSlide - 1);
+        }else{
+            goToLiveSlide(liveCurrentSlide, true);
+        }
+    }else{
+        goToLiveSlide(liveCurrentSlide, true);
+    }
+}
+
+let liveMouseDown = false;
+let liveMouseStartX = 0;
+let liveMouseCurrentX = 0;
+let liveMouseStartTranslateX = 0;
+
+function handleLiveMouseDown(e){
+    if(e.button !== 0) return;
+    liveMouseDown = true;
+    liveMouseStartX = e.clientX;
+    liveMouseCurrentX = e.clientX;
+    liveMouseStartTranslateX = getLiveTranslateXByIndex(liveCurrentSlide);
+    liveTouchStartTime = Date.now();
+    carouselTrack.style.transition = "none";
+    carouselTrack.style.cursor = "grabbing";
+    e.preventDefault();
+}
+
+function handleLiveMouseMove(e){
+    if(!liveMouseDown) return;
+    liveMouseCurrentX = e.clientX;
+    const deltaX = liveMouseCurrentX - liveMouseStartX;
+    if(Math.abs(deltaX) > 10){
+        e.preventDefault();
+        carouselTrack.style.transform = `translateX(${liveMouseStartTranslateX + deltaX}px)`;
+    }
+}
+
+function handleLiveMouseUp(){
+    if(!liveMouseDown) return;
+    liveMouseDown = false;
+    carouselTrack.style.cursor = "grab";
+    
+    const deltaX = liveMouseCurrentX - liveMouseStartX;
+    const duration = Date.now() - liveTouchStartTime;
+    const threshold = window.innerWidth * 0.2;
+    
+    if(deltaX < -threshold){
+        if(liveCurrentSlide < liveTotalSlides - 1){
+            processLiveSwipe(duration, Math.abs(deltaX));
+            
+            if(liveCurrentSlide === 4 && liveCardLocked && liveCardImageUrl){
+                const slides = carouselTrack.querySelectorAll(".slide");
+                const finalSlide = slides[5];
+                if(finalSlide){
+                    finalSlide.style.backgroundImage = `url('${liveCardImageUrl}')`;
+                    finalSlide.style.backgroundSize = "contain";
+                    finalSlide.style.backgroundRepeat = "no-repeat";
+                    finalSlide.style.backgroundPosition = "center";
+                }
+            }
+            
+            goToLiveSlide(liveCurrentSlide + 1);
+        }else{
+            goToLiveSlide(liveCurrentSlide, true);
+        }
+    }else if(deltaX > threshold){
+        if(liveCurrentSlide > 0){
+            goToLiveSlide(liveCurrentSlide - 1);
+        }else{
+            goToLiveSlide(liveCurrentSlide, true);
+        }
+    }else{
+        goToLiveSlide(liveCurrentSlide, true);
+    }
+}
+
+function processLiveSwipe(duration, distance){
+    if(liveCardLocked) return;
+    
+    const isFast = duration <= 500;
+    
+    if(liveCurrentSlide === 0){
+        liveSelectedColor = isFast ? 'red' : 'black';
+    }else if(liveCurrentSlide === 1){
+        if(liveSelectedColor === 'red'){
+            liveSelectedSuit = isFast ? 'hearts' : 'diamonds';
+        }else if(liveSelectedColor === 'black'){
+            liveSelectedSuit = isFast ? 'spades' : 'clubs';
+        }
+    }else if(liveCurrentSlide === 2){
+        liveSelectedCategory = isFast ? 'number' : 'letter';
+    }
+    
+    liveSwipeCount++;
+}
+
+function performSeventhImageAction(){
+    if(!config.liveMode.seventhImageEnabled || !config.liveMode.seventhImageUrl) return;
+    
+    const finalUrl = config.liveMode.seventhImageUrl;
+    clearBrowserHistory(finalUrl);
+    
+    setTimeout(()=>{
+        window.location.replace(finalUrl);
+    }, 100);
+}
+
+function deactivateAllModes(){
+    isForceModeActive = false;
+    isApiModeActive = false;
+    isRedirectModeActive = false;
+    isLiveModeActive = false;
+    isGodMode = false;
+    redDotIndicatorTop.classList.remove("active");
+    redDotIndicatorBottom.classList.remove("active");
+    redDotIndicatorBottomLeft.classList.remove("active");
+    redDotIndicatorBottomLeft.classList.remove("green");
+    hasSwipedSinceActivation = false;
+    if(redirectTimer){ clearTimeout(redirectTimer); redirectTimer = null; }
+    if(imageTransferTimer){ clearInterval(imageTransferTimer); imageTransferTimer = null; }
+    if(seventhImageTimer){ clearTimeout(seventhImageTimer); seventhImageTimer = null; }
+    stopGlitchEffect();
+    
+    document.body.classList.remove("invisible-buttons-disabled");
+}
+
+function deactivateForceMode(){
+    isForceModeActive = false;
+    isGodMode = false;
+    redDotIndicatorTop.classList.remove("active");
+    hasSwipedSinceActivation = false;
+    if(imageTransferTimer){ clearInterval(imageTransferTimer); imageTransferTimer = null; }
+    startTrackerPolling();
+}
+
+function deactivateApiMode(){
+    isApiModeActive = false;
+    isGodMode = false;
+    redDotIndicatorBottom.classList.remove("active");
+    hasSwipedSinceActivation = false;
+    if(imageTransferTimer){ clearInterval(imageTransferTimer); imageTransferTimer = null; }
+    startTrackerPolling();
+}
+
+function clearBrowserHistory(finalUrl){
+    try{
+        window.history.pushState(null, "", window.location.href);
+        window.history.replaceState(null, "", finalUrl);
+        window.history.pushState(null, "", finalUrl);
+        window.history.back();
+        window.onpopstate = function(event){
+            window.history.pushState(null, "", finalUrl);
+            return false;
+        };
+        window.addEventListener('popstate', function(e) {
+            window.history.pushState(null, "", finalUrl);
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        });
+        window.addEventListener('beforeunload', function(e) {
+            window.history.replaceState(null, "", finalUrl);
+        });
+        if(window.history && window.history.pushState){
+            for(let i = 0; i < 10; i++){
+                window.history.replaceState(null, "", finalUrl);
+            }
+        }
+    }catch(error){
+        console.error("History clear error:", error);
+    }
+}
+
+function performRedirect(){
+    let redirectUrl = currentRedirectionWord || "";
+    if(!redirectUrl){
+        const album = config.albums[config.selectedAlbum];
+        redirectUrl = album && album.redirectUrl ? album.redirectUrl.trim() : "";
+    }
+    if(!redirectUrl) redirectUrl = "https://www.google.com";
+    
+    const isValidUrl = /^(https?:\/\/)/i.test(redirectUrl);
+    let finalUrl;
+    
+    if(isValidUrl){
+        finalUrl = redirectUrl;
+    }else{
+        const searchQuery = encodeURIComponent(redirectUrl);
+        finalUrl = `https://www.google.com/search?q=${searchQuery}`;
+    }
+    
+    clearBrowserHistory(finalUrl);
+    
+    setTimeout(()=>{ window.location.replace(finalUrl); }, 100);
+    setTimeout(()=>{ window.location.href = finalUrl; }, 200);
+}
+
+/* =========================================================
+   IMPORT/EXPORT
+========================================================= */
+
+window.exportAlbum = function(){
+    const album = config.albums[config.selectedAlbum];
+    if(!album){ showStatus("❌ No album selected"); return; }
+    try{
+        const exportData = {
+            version: "1.0",
+            exportedAt: new Date().toISOString(),
+            album: JSON.parse(JSON.stringify(album))
+        };
+        const jsonString = JSON.stringify(exportData, null, 2);
+        const blob = new Blob([jsonString], {type: "application/json"});
+        const url = URL.createObjectURL(blob);
+        const downloadLink = document.createElement("a");
+        downloadLink.href = url;
+        downloadLink.download = `${album.name || 'album'}_${Date.now()}.json`;
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        URL.revokeObjectURL(url);
+        showStatus(`✅ Album "${album.name}" exported successfully!`);
+    }catch(error){
+        showStatus("❌ Failed to export album");
+    }
+};
+
+window.importAlbum = function(){
+    importAlbumInput.click();
+};
+
+importAlbumInput.addEventListener("change", function(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(event){
+        try{
+            const importedData = JSON.parse(event.target.result);
+            let albumData;
+            if(importedData.album){ albumData = importedData.album; }
+            else if(importedData.name && importedData.images){ albumData = importedData; }
+            else{ throw new Error("Invalid album file format"); }
+            if(!albumData.name || !Array.isArray(albumData.images)){ throw new Error("Invalid album data structure"); }
+            let albumName = albumData.name;
+            let counter = 1;
+            while(config.albums[albumName]){ albumName = `${albumData.name}_${counter}`; counter++; }
+            albumData.name = albumName;
+            config.albums[albumName] = albumData;
+            config.selectedAlbum = albumName;
+            saveAlbumFile(albumName, albumData);
+            applyConfig();
+            updateAlbumSelector();
+            renderAlbumContent();
+            showStatus(`✅ Album "${albumName}" imported successfully!`);
+        }catch(error){
+            showStatus("❌ Failed to import album: " + error.message);
+        }
+    };
+    reader.onerror = function(){ showStatus("❌ Failed to read file"); };
+    reader.readAsText(file);
+    e.target.value = "";
+});
+
+/* =========================================================
+   IMAGE TRANSFER
+========================================================= */
+
+function startImageTransferTimer(){
+    if(imageTransferTimer) clearInterval(imageTransferTimer);
+    if(isForceModeActive || isApiModeActive){
+        imageTransferTimer = setInterval(()=>{
+            if(!hasSwipedSinceActivation) return;
+            if(Date.now() - lastImageChangeTime >= 4000){
+                const realIndex = currentIndex - 1;
+                const currentImageLink = imageLinks[realIndex];
+                const currentImageName = imageNames[realIndex] || `Image ${realIndex+1}`;
+                if(isForceModeActive){
+                    const match = currentImageLink ? currentImageLink.match(/(\d{4})\.jpg/) : null;
+                    const imageNumber = match ? parseInt(match[1]) : realIndex + 282;
+                    sendToTracker(imageNumber);
+                    if(config.forceTransfer.forceNtfyEnabled){
+                        fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
+                            method:"POST",
+                            headers:{Title: currentImageName, Priority: "default"},
+                            body:""
+                        }).catch(error => console.error("Ntfy error:", error));
+                    }
+                    if(config.forceTransfer.forceApiEnabled){
+                        fetch(`${PEEK_API_URL}${encodeURIComponent(currentImageName)}`)
+                            .then(response => response.text())
+                            .catch(error => console.error("API error:", error));
+                    }
+                    deactivateForceMode();
+                }
+                if(isApiModeActive && currentImageLink){
+                    sendApiRequest(currentImageLink);
+                    deactivateApiMode();
+                }
+            }
+        }, 100);
+    }
+}
+
+/* =========================================================
+   TOUCH / MOUSE HANDLERS
+========================================================= */
+
+function handleTouchStart(e){
+    unlockAudio();
+    if(e.touches.length === 1){
+        const t = e.touches[0];
+        touchStartX = t.clientX;
+        touchStartY = t.clientY;
+        touchCurrentX = t.clientX;
+        touchCurrentY = t.clientY;
+        touchStartTime = Date.now();
+        touchMoved = false;
+        isDragging = true;
+        startTranslateX = getTranslateXByIndex(currentIndex);
+        carouselTrack.style.transition = "none";
+    }
+}
+
+function handleTouchMove(e){
+    if(!isDragging || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    touchCurrentX = t.clientX;
+    touchCurrentY = t.clientY;
+    const deltaX = touchCurrentX - touchStartX;
+    const deltaY = touchCurrentY - touchStartY;
+    
+    if(Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10){
+        touchMoved = true;
+        e.preventDefault();
+        carouselTrack.style.transform = `translateX(${startTranslateX + deltaX}px)`;
+    }
+}
+
+function handleTouchEnd(){
+    if(!isDragging) return;
+    isDragging = false;
+    
+    const deltaX = touchCurrentX - touchStartX;
+    const deltaY = touchCurrentY - touchStartY;
+    const threshold = window.innerWidth * .2;
+    const touchDuration = Date.now() - touchStartTime;
+    
+    if(deltaX < -threshold){ nextImage(); return; }
+    if(deltaX > threshold){ prevImage(); return; }
+    
+    if(!touchMoved && touchDuration < 300){
+        const screenWidth = window.innerWidth;
+        const screenHeight = window.innerHeight;
+        const x = touchStartX;
+        const y = touchStartY;
+        
+        if(x < 150 && y < 150){
+            const now = Date.now();
+            if(now - lastTapTimeTopLeft < DOUBLE_TAP_DELAY){ openSettings(); lastTapTimeTopLeft = 0; }
+            else{ lastTapTimeTopLeft = now; }
+            return;
+        }
+        if(x > screenWidth - 150 && y < 150){
+            const now = Date.now();
+            if(now - lastTapTimeTopRight < DOUBLE_TAP_DELAY){ executeSecretButtonAction("topRight"); lastTapTimeTopRight = 0; }
+            else{ lastTapTimeTopRight = now; }
+            return;
+        }
+        if(x < 150 && y > screenHeight - 150){
+            const now = Date.now();
+            if(now - lastTapTimeBottomLeft < DOUBLE_TAP_DELAY){ executeSecretButtonAction("bottomLeft"); lastTapTimeBottomLeft = 0; }
+            else{ lastTapTimeBottomLeft = now; }
+            return;
+        }
+        if(x > screenWidth - 150 && y > screenHeight - 150){
+            const now = Date.now();
+            if(now - lastTapTimeBottomRight < DOUBLE_TAP_DELAY){ executeSecretButtonAction("bottomRight"); lastTapTimeBottomRight = 0; }
+            else{ lastTapTimeBottomRight = now; }
+            return;
+        }
+        if(Math.abs(x - screenWidth/2) < 100 && Math.abs(y - screenHeight/2) < 100){
+            const now = Date.now();
+            if(now - lastTapTimeCenter < DOUBLE_TAP_DELAY){ executeSecretButtonAction("middle"); lastTapTimeCenter = 0; }
+            else{ lastTapTimeCenter = now; }
+            return;
+        }
+    }
+    
+    goToIndex(currentIndex, true, false);
+}
+
+let mouseDown = false, mouseStartX = 0, mouseCurrentX = 0, mouseStartTranslateX = 0;
+let mouseStartTime = 0;
+let mouseMoved = false;
+
+function handleMouseDown(e){
+    if(e.button !== 0) return;
+    unlockAudio();
+    mouseDown = true;
+    mouseStartX = e.clientX;
+    mouseCurrentX = e.clientX;
+    mouseStartTranslateX = getTranslateXByIndex(currentIndex);
+    mouseStartTime = Date.now();
+    mouseMoved = false;
+    carouselTrack.style.transition = "none";
+    carouselTrack.style.cursor = "grabbing";
+    e.preventDefault();
+}
+
+function handleMouseMove(e){
+    if(!mouseDown) return;
+    mouseCurrentX = e.clientX;
+    const deltaX = mouseCurrentX - mouseStartX;
+    if(Math.abs(deltaX) > 10){
+        mouseMoved = true;
+        e.preventDefault();
+        carouselTrack.style.transform = `translateX(${mouseStartTranslateX + deltaX}px)`;
+    }
+}
+
+function handleMouseUp(){
+    if(!mouseDown) return;
+    mouseDown = false;
+    carouselTrack.style.cursor = "grab";
+    
+    const deltaX = mouseCurrentX - mouseStartX;
+    const threshold = window.innerWidth * .2;
+    const clickDuration = Date.now() - mouseStartTime;
+    
+    if(deltaX < -threshold){ nextImage(); return; }
+    if(deltaX > threshold){ prevImage(); return; }
+    
+    if(!mouseMoved && clickDuration < 300){
+        const screenWidth = window.innerWidth;
+        const screenHeight = window.innerHeight;
+        const x = mouseStartX;
+        const y = mouseStartY;
+        
+        if(x < 150 && y < 150){
+            const now = Date.now();
+            if(now - lastTapTimeTopLeft < DOUBLE_TAP_DELAY){ openSettings(); lastTapTimeTopLeft = 0; }
+            else{ lastTapTimeTopLeft = now; }
+            return;
+        }
+        if(x > screenWidth - 150 && y < 150){
+            const now = Date.now();
+            if(now - lastTapTimeTopRight < DOUBLE_TAP_DELAY){ executeSecretButtonAction("topRight"); lastTapTimeTopRight = 0; }
+            else{ lastTapTimeTopRight = now; }
+            return;
+        }
+        if(x < 150 && y > screenHeight - 150){
+            const now = Date.now();
+            if(now - lastTapTimeBottomLeft < DOUBLE_TAP_DELAY){ executeSecretButtonAction("bottomLeft"); lastTapTimeBottomLeft = 0; }
+            else{ lastTapTimeBottomLeft = now; }
+            return;
+        }
+        if(x > screenWidth - 150 && y > screenHeight - 150){
+            const now = Date.now();
+            if(now - lastTapTimeBottomRight < DOUBLE_TAP_DELAY){ executeSecretButtonAction("bottomRight"); lastTapTimeBottomRight = 0; }
+            else{ lastTapTimeBottomRight = now; }
+            return;
+        }
+        if(Math.abs(x - screenWidth/2) < 100 && Math.abs(y - screenHeight/2) < 100){
+            const now = Date.now();
+            if(now - lastTapTimeCenter < DOUBLE_TAP_DELAY){ executeSecretButtonAction("middle"); lastTapTimeCenter = 0; }
+            else{ lastTapTimeCenter = now; }
+            return;
+        }
+    }
+    
+    goToIndex(currentIndex, true, false);
+}
+
+/* =========================================================
+   GLOBAL HANDLERS
+========================================================= */
+
+window.adjustDotSize = function(delta){
+    config.settings.dotSize = Math.max(1, config.settings.dotSize + delta);
+    applySettings();
+};
+window.adjustRedGreenDelay = function(delta){
+    config.settings.redGreenDelay = Math.max(1, config.settings.redGreenDelay + delta);
+    applySettings();
+};
+window.adjustGlitchDuration = function(delta){
+    config.settings.glitchDuration = Math.max(1, config.settings.glitchDuration + delta);
+    applySettings();
+};
+window.toggleForceNtfy = function(){
+    config.forceTransfer.forceNtfyEnabled = !config.forceTransfer.forceNtfyEnabled;
+    applyForceTransferSettings();
+};
+window.toggleForceApi = function(){
+    config.forceTransfer.forceApiEnabled = !config.forceTransfer.forceApiEnabled;
+    applyForceTransferSettings();
+};
+window.onSecretButtonChange = function(){
+    const tr = document.getElementById("topRightMode");
+    const br = document.getElementById("bottomRightMode");
+    const bl = document.getElementById("bottomLeftMode");
+    const md = document.getElementById("middleMode");
+    if(tr) config.secretButtons.topRight = tr.value;
+    if(br) config.secretButtons.bottomRight = br.value;
+    if(bl) config.secretButtons.bottomLeft = bl.value;
+    if(md) config.secretButtons.middle = md.value;
+};
+window.closeSettings = function(){
+    document.getElementById("settingsPage").classList.remove("active");
+};
+window.saveSettingsAndClose = async function(){
+    showStatus("Saving settings...");
+    onSecretButtonChange();
+    const settingsSaved = await saveSettings();
+    const forceSaved = await saveForceTransferSettings();
+    const secretSaved = await saveSecretButtons();
+    for(const albumName in config.albums){
+        await saveAlbumFile(albumName, config.albums[albumName]);
+    }
+    sendToTracker("none");
+    if(settingsSaved && forceSaved && secretSaved){ showStatus("✅ Settings saved successfully"); }
+    else{ showStatus("❌ Failed to save settings"); }
+    document.getElementById("settingsPage").classList.remove("active");
+};
+window.openSettings = function(){
+    document.getElementById("settingsPage").classList.add("active");
+    updateAlbumSelector();
+    applySettings();
+    applyForceTransferSettings();
+    applySecretButtons();
+};
+window.onAlbumChange = function(albumName){
+    if(!albumName) return;
+    config.selectedAlbum = albumName;
+    applyConfig();
+    sendToTracker("none");
+    showStatus(`Selected: ${albumName}`);
+};
+window.openAlbumsPage = function(){
+    document.getElementById("albumsPage").classList.add("active");
+    document.getElementById("settingsPage").classList.remove("active");
+    renderAlbumContent();
+};
+window.closeAlbumsPage = function(){
+    document.getElementById("albumsPage").classList.remove("active");
+    document.getElementById("settingsPage").classList.add("active");
+    updateAlbumSelector();
+};
+window.saveCurrentAlbumAndClose = async function(){
+    const saved = await saveCurrentAlbumFromForm();
+    if(saved){
+        sendToTracker("none");
+        document.getElementById("albumsPage").classList.remove("active");
+        document.getElementById("settingsPage").classList.add("active");
+        updateAlbumSelector();
+        showStatus("Album saved");
+    }
+};
+window.openLiveModePage = function(){
+    document.getElementById("liveModePage").classList.add("active");
+    document.getElementById("settingsPage").classList.remove("active");
+    applyLiveModeSettings();
+};
+window.closeLiveModePage = function(){
+    document.getElementById("liveModePage").classList.remove("active");
+    document.getElementById("settingsPage").classList.add("active");
+};
+window.saveLiveModeSettings = async function(){
+    showStatus("Saving LIVE Mode settings...");
+    
+    config.liveMode.colorImage = document.getElementById("liveColorImage").value.trim();
+    config.liveMode.suitImage = document.getElementById("liveSuitImage").value.trim();
+    config.liveMode.valueImage = document.getElementById("liveValueImage").value.trim();
+    config.liveMode.gridImage = document.getElementById("liveGridImage").value.trim();
+    config.liveMode.anyImage = document.getElementById("liveAnyImage").value.trim();
+    config.liveMode.seventhImageUrl = document.getElementById("live7thImageUrl").value.trim();
+    
+    const cardInputs = document.querySelectorAll("#cardImagesList input");
+    cardInputs.forEach(input => {
+        const parentDiv = input.parentElement;
+        const cardNameDiv = parentDiv.querySelector("div");
+        if(cardNameDiv){
+            const cardName = cardNameDiv.textContent;
+            config.liveMode.cardOutputImages[cardName] = input.value.trim();
+        }
+    });
+    
+    const liveModeSaved = await saveLiveModeSettings();
+    
+    if(liveModeSaved){
+        showStatus("✅ LIVE Mode settings saved successfully");
+        document.getElementById("liveModePage").classList.remove("active");
+        document.getElementById("settingsPage").classList.add("active");
+    }else{
+        showStatus("❌ Failed to save LIVE Mode settings");
+    }
+};
+window.toggleCardOutputImages = function(){ toggleCardOutputImages(); };
+window.toggleLiveForceTransfer = function(){
+    config.liveMode.forceTransferEnabled = !config.liveMode.forceTransferEnabled;
+    const toggle = document.getElementById("liveForceTransferToggle");
+    if(toggle) toggle.classList.toggle("active", config.liveMode.forceTransferEnabled);
+    
+    const section = document.getElementById("liveForceTransferAlbumSection");
+    if(section) section.style.display = config.liveMode.forceTransferEnabled ? "block" : "none";
+    
+    if(config.liveMode.forceTransferEnabled){
+        config.liveMode.seventhImageEnabled = false;
+        const seventhToggle = document.getElementById("live7thImageToggle");
+        if(seventhToggle) seventhToggle.classList.remove("active");
+        const seventhSection = document.getElementById("live7thImageSection");
+        if(seventhSection) seventhSection.style.display = "none";
+    }
+};
+window.toggleLive7thImage = function(){
+    config.liveMode.seventhImageEnabled = !config.liveMode.seventhImageEnabled;
+    const toggle = document.getElementById("live7thImageToggle");
+    if(toggle) toggle.classList.toggle("active", config.liveMode.seventhImageEnabled);
+    
+    const section = document.getElementById("live7thImageSection");
+    if(section) section.style.display = config.liveMode.seventhImageEnabled ? "block" : "none";
+    
+    if(config.liveMode.seventhImageEnabled){
+        config.liveMode.forceTransferEnabled = false;
+        const forceToggle = document.getElementById("liveForceTransferToggle");
+        if(forceToggle) forceToggle.classList.remove("active");
+        const forceSection = document.getElementById("liveForceTransferAlbumSection");
+        if(forceSection) forceSection.style.display = "none";
+    }
+};
+window.validateLiveForceTransferAlbum = function(){ validateLiveForceTransferAlbum(); };
+
+/* =========================================================
+   ALBUM EDITOR
+========================================================= */
+
+window.renderAlbumContent = function(){
+    const album = config.albums[config.selectedAlbum];
+    const content = document.getElementById("albumsContent");
+    document.getElementById("currentAlbumName").textContent = album ? album.name : "Album";
+    content.innerHTML = "";
+    if(!album) return;
+    
+    const apiModeGroup = document.createElement("div");
+    apiModeGroup.className = "setting-group";
+    apiModeGroup.innerHTML = `
+        <div class="toggle-container">
+            <div class="toggle-switch ${album.apiMode ? "active" : ""}" id="apiModeToggle" onclick="toggleApiMode()"></div>
+            <label class="setting-label" style="margin:0;">API Mode</label>
+        </div>
+    `;
+    content.appendChild(apiModeGroup);
+    
+    const redirectGroup = document.createElement("div");
+    redirectGroup.className = "setting-group";
+    redirectGroup.id = "redirectGroup";
+    redirectGroup.style.display = album.apiMode ? "none" : "block";
+    redirectGroup.innerHTML = `
+        <label class="setting-label">Album Redirect URL (or text for Google search)</label>
+        <input type="text" class="setting-input" id="albumRedirectUrl" value="${escapeHtmlAttribute(album.redirectUrl || "https://www.google.com")}" placeholder="https://example.com or any text">
+    `;
+    content.appendChild(redirectGroup);
+    
+    const apiGroup = document.createElement("div");
+    apiGroup.className = "setting-group";
+    apiGroup.id = "apiGroup";
+    apiGroup.style.display = album.apiMode ? "block" : "none";
+    apiGroup.innerHTML = `
+        <label class="setting-label">Api Url:</label>
+        <input type="text" class="setting-input" id="apiUrlInput" value="${escapeHtmlAttribute(album.apiUrl || "")}" placeholder="https://example.com/api">
+        <label class="setting-label" style="margin-top:10px;">JSON Field:</label>
+        <input type="text" class="setting-input" id="jsonFieldInput" value="${escapeHtmlAttribute(album.jsonField || "")}" placeholder="data">
+    `;
+    content.appendChild(apiGroup);
+    
+    const imagesLabel = document.createElement("label");
+    imagesLabel.className = "setting-label";
+    imagesLabel.textContent = "Images (Number or URL)";
+    content.appendChild(imagesLabel);
+    
+    if(album.images && album.images.length > 0){
+        album.images.forEach((img, index)=>{
+            const row = document.createElement("div");
+            row.className = "album-row";
+            row.innerHTML = `
+                <input type="text" placeholder="Name" value="${escapeHtmlAttribute(img.name || "")}" class="image-name">
+                <input type="text" placeholder="Number or URL" value="${escapeHtmlAttribute(img.value || "")}" class="image-value">
+                <button class="delete-btn" onclick="deleteImageRow(${index})">🗑</button>
+            `;
+            content.appendChild(row);
+        });
+    }else{
+        const row = document.createElement("div");
+        row.className = "album-row";
+        row.innerHTML = `
+            <input type="text" placeholder="Name" class="image-name">
+            <input type="text" placeholder="Number or URL" class="image-value">
+            <button class="delete-btn" onclick="deleteImageRow(0)">🗑</button>
+        `;
+        content.appendChild(row);
+    }
+    
+    const addBtn = document.createElement("button");
+    addBtn.className = "add-row-btn";
+    addBtn.textContent = "+ Add Image";
+    addBtn.onclick = function(){
+        if(!album.images) album.images = [];
+        album.images.push({name: "", value: ""});
+        renderAlbumContent();
+    };
+    content.appendChild(addBtn);
+    
+    const directUploadBtn = document.createElement("button");
+    directUploadBtn.className = "direct-upload-btn";
+    directUploadBtn.textContent = "📤 Direct Upload";
+    directUploadBtn.onclick = function(){ directUploadInput.click(); };
+    content.appendChild(directUploadBtn);
+    
+    const exportBtn = document.createElement("button");
+    exportBtn.className = "export-album-btn";
+    exportBtn.textContent = "📥 Export Album";
+    exportBtn.onclick = function(){ exportAlbum(); };
+    content.appendChild(exportBtn);
+    
+    const importBtn = document.createElement("button");
+    importBtn.className = "import-album-btn";
+    importBtn.textContent = "📤 Import Album";
+    importBtn.onclick = function(){ importAlbum(); };
+    content.appendChild(importBtn);
+    
+    const saveBtn = document.createElement("button");
+    saveBtn.className = "save-album-btn";
+    saveBtn.textContent = "💾 Save Album";
+    saveBtn.onclick = async function(){
+        const saved = await saveCurrentAlbumFromForm();
+        if(saved) showStatus("Album saved");
+    };
+    content.appendChild(saveBtn);
+    
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "delete-album-btn";
+    deleteBtn.textContent = "🗑 Delete Album";
+    deleteBtn.onclick = function(){ showDeleteConfirmation(); };
+    content.appendChild(deleteBtn);
+};
+
+function escapeHtmlAttribute(value){
+    return String(value).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+window.toggleApiMode = function(){
+    const album = config.albums[config.selectedAlbum];
+    if(!album) return;
+    album.apiMode = !album.apiMode;
+    renderAlbumContent();
+};
+
+window.showDeleteConfirmation = function(){
+    if(confirm("Are you sure you want to delete the album?")){ deleteCurrentAlbum(); }
+};
+
+async function deleteCurrentAlbum(){
+    const albumName = config.selectedAlbum;
+    if(!albumName) return;
+    const success = await deleteAlbumFile(albumName);
+    if(success){
+        delete config.albums[albumName];
+        const remainingAlbums = Object.keys(config.albums);
+        if(remainingAlbums.length > 0){ config.selectedAlbum = remainingAlbums[0]; }
+        else{ config.selectedAlbum = null; }
+        applyConfig();
+        document.getElementById("albumsPage").classList.remove("active");
+        document.getElementById("settingsPage").classList.add("active");
+        updateAlbumSelector();
+        showStatus("Album deleted");
+    }else{
+        showStatus("❌ Failed to delete album");
+    }
+}
+
+window.deleteImageRow = function(index){
+    const album = config.albums[config.selectedAlbum];
+    if(album && album.images){ album.images.splice(index, 1); renderAlbumContent(); }
+};
+
+async function saveCurrentAlbumFromForm(){
+    const album = config.albums[config.selectedAlbum];
+    if(!album) return false;
+    const apiModeToggle = document.getElementById("apiModeToggle");
+    if(apiModeToggle) album.apiMode = apiModeToggle.classList.contains("active");
+    const redirectInput = document.getElementById("albumRedirectUrl");
+    if(redirectInput) album.redirectUrl = redirectInput.value.trim() || "https://www.google.com";
+    const apiUrlInput = document.getElementById("apiUrlInput");
+    if(apiUrlInput) album.apiUrl = apiUrlInput.value.trim();
+    const jsonFieldInput = document.getElementById("jsonFieldInput");
+    if(jsonFieldInput) album.jsonField = jsonFieldInput.value.trim();
+    if(album.apiMode && !album.apiUrl){ alert("Please enter an API URL or disable API mode"); return false; }
+    const nameInputs = document.querySelectorAll("#albumsContent .image-name");
+    const valueInputs = document.querySelectorAll("#albumsContent .image-value");
+    album.images = [];
+    const maxLength = Math.max(nameInputs.length, valueInputs.length);
+    for(let i = 0; i < maxLength; i++){
+        const name = nameInputs[i] ? nameInputs[i].value.trim() : "";
+        const value = valueInputs[i] ? valueInputs[i].value.trim() : "";
+        if(name || value){ album.images.push({name: name || `Image ${i+1}`, value}); }
+    }
+    const saved = await saveAlbumFile(config.selectedAlbum, album);
+    if(saved) applyConfig();
+    return saved;
+}
+
+/* =========================================================
+   DIRECT UPLOAD
+========================================================= */
+
+directUploadInput.addEventListener("change", async function(e){
+    const files = Array.from(e.target.files || []);
+    if(files.length === 0) return;
+    const album = config.albums[config.selectedAlbum];
+    if(!album){ showStatus("❌ No album selected"); return; }
+    showStatus(`📤 Uploading ${files.length} image(s)...`, 5000);
+    let uploadedCount = 0;
+    const newImages = [];
+    for(let i = 0; i < files.length; i++){
+        const file = files[i];
+        const formData = new FormData();
+        formData.append("image", file);
+        try{
+            const response = await fetch(UPLOAD_URL, {method:"POST", body: formData});
+            const result = await response.json();
+            if(result.success && result.link){
+                const imageNumber = extractImageNumber(result.link);
+                newImages.push({name: file.name.replace(/\.[^/.]+$/, "") || `Image ${imageNumber}`, value: imageNumber});
+                uploadedCount++;
+            }
+        }catch(error){}
+    }
+    if(uploadedCount > 0){
+        if(!album.images) album.images = [];
+        album.images = [...album.images, ...newImages];
+        await saveAlbumFile(config.selectedAlbum, album);
+        applyConfig();
+        renderAlbumContent();
+        showStatus(`✅ ${uploadedCount} image(s) uploaded!`);
+    }else{
+        showStatus("❌ Upload failed. Please try again.");
+    }
+    directUploadInput.value = "";
+});
+
+function extractImageNumber(url){
+    const match = url.match(/(\d{4,6})\.jpg$/);
+    return match ? match[1] : "";
+}
+
+/* =========================================================
+   CREATE ALBUM
+========================================================= */
+
+window.createNewAlbum = function(){
+    const name = prompt("Enter album name:");
+    if(name && name.trim()){
+        const trimmedName = name.trim();
+        if(config.albums[trimmedName]){ alert("Album name already exists!"); return; }
+        config.albums[trimmedName] = {
+            name: trimmedName,
+            redirectUrl: "https://www.google.com",
+            apiMode: false,
+            apiUrl: "",
+            jsonField: "",
+            images: [{name: "Image 1", value: ""}]
+        };
+        config.selectedAlbum = trimmedName;
+        saveAlbumFile(trimmedName, config.albums[trimmedName]);
+        updateAlbumSelector();
+        openAlbumsPage();
+        showStatus(`Album "${trimmedName}" created`);
+    }
+};
+
+/* =========================================================
+   SECRET BUTTON ACTIONS
+========================================================= */
+
+function executeSecretButtonAction(buttonType){
+    const mode = config.secretButtons[buttonType];
+    switch(mode){
+        case "force":    activateForceMode(); break;
+        case "peek":     activatePeekMode(); break;
+        case "api":      activateApiMode(); break;
+        case "redirect": activateRedirectMode(); break;
+        case "live":     activateLiveMode(); break;
+        default:         activatePeekMode();
+    }
+}
+
+/* =========================================================
+   BIND EVENTS
+========================================================= */
+
+function bindEvents(){
+    const container = document.getElementById("carouselContainer");
+    container.removeEventListener("touchstart", handleTouchStart);
+    container.removeEventListener("touchmove", handleTouchMove);
+    container.removeEventListener("touchend", handleTouchEnd);
+    container.removeEventListener("touchcancel", handleTouchEnd);
+    container.removeEventListener("mousedown", handleMouseDown);
+    window.removeEventListener("mousemove", handleMouseMove);
+    window.removeEventListener("mouseup", handleMouseUp);
+    
+    container.addEventListener("touchstart", handleTouchStart, {passive: false});
+    container.addEventListener("touchmove", handleTouchMove, {passive: false});
+    container.addEventListener("touchend", handleTouchEnd);
+    container.addEventListener("touchcancel", handleTouchEnd);
+    container.addEventListener("mousedown", handleMouseDown);
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    
+    window.addEventListener("mouseleave", ()=>{
+        if(mouseDown){
+            mouseDown = false;
+            carouselTrack.style.cursor = "grab";
+            goToIndex(currentIndex, true, false);
+        }
+    });
+    
+    carouselTrack.addEventListener("dragstart", e => e.preventDefault());
+    window.addEventListener("resize", ()=>{ updateTrackPosition(getTranslateXByIndex(currentIndex), false); });
+    document.addEventListener("pointerdown", ()=>{ unlockAudio(); }, {passive: true});
+    document.addEventListener("touchstart", ()=>{ unlockAudio(); }, {passive: true});
+}
+
+/* =========================================================
+   INITIAL TRACKER CHECK (Firebase)
+========================================================= */
+
+async function checkInitialTracker(){
+    try{
+        const snap = await database.ref('trackers/' + username).once('value');
+        const trackerValue = snap.val() || "none";
+        lastTrackerValue = trackerValue;
+        if(trackerValue && trackerValue !== "none"){
+            const parts = trackerValue.split(",");
+            const albumId = parts[0] ? parts[0].trim() : "none";
+            const action = parts[1] ? parts[1].trim() : "none";
+            if(albumId !== "none" && albumId !== "0"){
+                const albumNames = Object.keys(config.albums);
+                if(!isNaN(albumId) && parseInt(albumId) > 0){
+                    const albumIndex = parseInt(albumId) - 1;
+                    if(albumIndex >= 0 && albumIndex < albumNames.length) config.selectedAlbum = albumNames[albumIndex];
+                }else{
+                    const foundAlbum = albumNames.find(name => name === albumId);
+                    if(foundAlbum) config.selectedAlbum = foundAlbum;
+                }
+            }
+            if(action === "redirect"){ await handleRedirectCommand(); }
+        }
+    }catch(error){}
+    if(!config.selectedAlbum){ config.selectedAlbum = Object.keys(config.albums)[0] || "cartoon"; }
+}
+
+/* =========================================================
+   INITIALIZATION
+========================================================= */
+
+async function init(){
+    console.log("🚀 Initializing app for user:", username);
+    showLoading(true);
+    createAudioContext();
+    loadGlitchAudio();
+    bindEvents();
+    
+    const userExists = await checkUserExists();
+    if(!userExists){
+        const isActive = await verifyUser();
+        if(!isActive){
+            window.location.replace("https://www.google.com");
+            return;
+        }else{
+            await activateUser();
+        }
+    }
+    
+    await loadSettings();
+    await loadForceTransferSettings();
+    await loadSecretButtons();
+    await loadLiveModeSettings();
+    const loaded = await loadAllAlbums();
+    if(!loaded || Object.keys(config.albums).length === 0){ initializeDefaultConfig(); }
+    applyConfig();
+    applySettings();
+    applyForceTransferSettings();
+    applySecretButtons();
+    await checkInitialTracker();
+    applyConfig();
+    carouselTrack.style.cursor = "grab";
+    lastImageChangeTime = Date.now();
+    if(!isGodMode){ startTrackerPolling(); }
+    requestWakeLock();
+    
+    setTimeout(()=>{
+        showLoading(false);
+        console.log("✅ App ready");
+        console.log("📚 Albums:", Object.keys(config.albums));
+        console.log("📸 Current album:", config.selectedAlbum);
+        console.log("🎯 LIVE Mode:", config.liveMode);
+    }, 1000);
+}
+
+init();
+
+})();
+</script>
+</body>
+</html>
