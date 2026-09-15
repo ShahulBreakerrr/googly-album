@@ -41,8 +41,40 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:no
 .settings-subtitle{text-align:center;font-size:16px;font-weight:bold;color:#4fc3f7;margin-bottom:15px;letter-spacing:0.5px;padding-top:20px;border-top:1px solid #444}
 .setting-group{margin-bottom:20px}
 .setting-label{display:block;margin-bottom:8px;font-size:14px;color:#ccc;text-align:center}
-.setting-input{width:100%;padding:12px;background:#333;border:1px solid #444;border-radius:5px;color:#fff;font-size:16px}
-.album-selector,.mode-selector{width:100%;padding:12px;background:#333;border:1px solid #444;border-radius:5px;color:#fff;font-size:16px;text-align:center}
+.setting-input{width:100%;padding:12px;background:#333;border:1px solid #444;border-radius:5px;color:#fff;font-size:16px;text-align:center}
+
+/* ⭐ CENTERED dropdowns — works on desktop, Android, iOS */
+.album-selector,.mode-selector{
+    width:100%;
+    padding:12px 40px 12px 15px;
+    background:#333;
+    border:1px solid #444;
+    border-radius:5px;
+    color:#fff;
+    font-size:16px;
+    text-align:center;
+    text-align-last:center;
+    -moz-text-align-last:center;
+    -webkit-appearance:none;
+    -moz-appearance:none;
+    appearance:none;
+    background-image:url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+    background-repeat:no-repeat;
+    background-position:right 12px center;
+    background-size:16px;
+}
+.album-selector option,.mode-selector option{
+    text-align:center;
+    text-align-last:center;
+    -moz-text-align-last:center;
+    background:#333;
+    color:#fff;
+    padding:8px;
+}
+
+/* ⭐ Live mode URL inputs centered */
+.live-mode-url-input{text-align:center !important;}
+
 .open-albums-btn,.create-album-btn,.open-live-mode-btn{width:100%;padding:15px;background:#007bff;color:#fff;border:0;border-radius:5px;cursor:pointer;font-size:16px;margin-top:10px}
 .create-album-btn{background:#28a745}
 .open-live-mode-btn{background:#ff9800}
@@ -100,13 +132,10 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:no
 #glitchText{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#fff;font-family:monospace,sans-serif;font-size:clamp(22px,7vw,90px);font-weight:900;letter-spacing:8px;text-align:center;opacity:0;pointer-events:none;z-index:200;text-shadow:8px 0 #f00,-8px 0 #0ff}
 @media(max-width:600px){.glitchBar{height:3px}#glitchText{letter-spacing:4px}}
 
-/* Live mode image preview thumb */
 .live-img-preview{width:100%;height:100px;object-fit:cover;border-radius:5px;border:1px solid #444;background:#222;cursor:pointer;display:block;margin-top:6px;}
 .live-img-preview:hover{border-color:#4fc3f7;}
-.live-img-placeholder{width:100%;height:100px;border-radius:5px;border:1px dashed #555;background:#222;color:#888;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;margin-top:6px;}
 .live-url-box{font-size:10px;color:#888;word-break:break-all;margin-top:4px;text-align:center;}
 
-/* Card output grid */
 .card-output-item{border:1px solid #444;padding:8px;border-radius:5px;display:flex;flex-direction:column;}
 .card-output-name{font-size:11px;margin-bottom:5px;color:#ccc;text-align:center;}
 .card-output-preview{width:100%;height:70px;object-fit:cover;border-radius:4px;border:1px solid #333;background:#222;margin-bottom:5px;}
@@ -154,8 +183,6 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:no
 <input type="file" id="directUploadInput" class="file-input-hidden" accept="image/*" multiple>
 <input type="file" id="importAlbumInput" class="file-input-hidden" accept=".json">
 <input type="file" id="liveModeImportInput" class="file-input-hidden" accept=".json">
-
-<!-- Hidden file inputs used for live mode image uploads (one per slot, reused) -->
 <input type="file" id="liveMainImageInput" class="file-input-hidden" accept="image/*">
 <input type="file" id="liveCardImageInput" class="file-input-hidden" accept="image/*">
 
@@ -172,9 +199,11 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:no
             <select class="album-selector" id="albumSelector" onchange="onAlbumChange(this.value)"></select>
         </div>
 
-        <button class="open-albums-btn" onclick="openAlbumsPage()">Open Album</button>
-        <button class="create-album-btn" onclick="createNewAlbum()">Create New Album</button>
+        <button class="open-albums-btn" onclick="openAlbumsPage()">📂 Open Album</button>
+        <button class="create-album-btn" onclick="createNewAlbum()">➕ Create New Album</button>
+        <button class="import-album-btn" onclick="importAlbum()">📤 Import Album</button>
         <button class="open-live-mode-btn" onclick="openLiveModePage()">🎯 LIVE Mode Settings</button>
+        <button class="delete-album-btn" onclick="deleteSelectedAlbumFromSettings()">🗑 Delete Selected Album</button>
 
         <div class="settings-subtitle">⚡ Force Transfer Settings</div>
         
@@ -294,35 +323,35 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:no
         <div class="setting-group">
             <label class="setting-label">1. Card Colour Selection Image</label>
             <img id="liveColorImagePreview" class="live-img-preview" alt="Card colour" onclick="triggerLiveMainImageUpload('colorImage')">
-            <input type="text" class="setting-input" id="liveColorImage" placeholder="https://example.com/color.jpg" style="margin-top:6px;font-size:11px;">
+            <input type="text" class="setting-input live-mode-url-input" id="liveColorImage" placeholder="https://example.com/color.jpg" style="margin-top:6px;font-size:11px;">
             <div class="live-url-box" id="liveColorImageUrl"></div>
         </div>
         
         <div class="setting-group">
             <label class="setting-label">2. Suit Selection Image</label>
             <img id="liveSuitImagePreview" class="live-img-preview" alt="Suit" onclick="triggerLiveMainImageUpload('suitImage')">
-            <input type="text" class="setting-input" id="liveSuitImage" placeholder="https://example.com/suit.jpg" style="margin-top:6px;font-size:11px;">
+            <input type="text" class="setting-input live-mode-url-input" id="liveSuitImage" placeholder="https://example.com/suit.jpg" style="margin-top:6px;font-size:11px;">
             <div class="live-url-box" id="liveSuitImageUrl"></div>
         </div>
         
         <div class="setting-group">
             <label class="setting-label">3. Card Value/Number/Picture Card Image</label>
             <img id="liveValueImagePreview" class="live-img-preview" alt="Card value" onclick="triggerLiveMainImageUpload('valueImage')">
-            <input type="text" class="setting-input" id="liveValueImage" placeholder="https://example.com/value.jpg" style="margin-top:6px;font-size:11px;">
+            <input type="text" class="setting-input live-mode-url-input" id="liveValueImage" placeholder="https://example.com/value.jpg" style="margin-top:6px;font-size:11px;">
             <div class="live-url-box" id="liveValueImageUrl"></div>
         </div>
         
         <div class="setting-group">
             <label class="setting-label">4. Number Grid Background Image</label>
             <img id="liveGridImagePreview" class="live-img-preview" alt="Grid bg" onclick="triggerLiveMainImageUpload('gridImage')">
-            <input type="text" class="setting-input" id="liveGridImage" placeholder="https://example.com/grid.jpg" style="margin-top:6px;font-size:11px;">
+            <input type="text" class="setting-input live-mode-url-input" id="liveGridImage" placeholder="https://example.com/grid.jpg" style="margin-top:6px;font-size:11px;">
             <div class="live-url-box" id="liveGridImageUrl"></div>
         </div>
         
         <div class="setting-group">
             <label class="setting-label">5. Any Image</label>
             <img id="liveAnyImagePreview" class="live-img-preview" alt="Any" onclick="triggerLiveMainImageUpload('anyImage')">
-            <input type="text" class="setting-input" id="liveAnyImage" placeholder="https://example.com/any.jpg" style="margin-top:6px;font-size:11px;">
+            <input type="text" class="setting-input live-mode-url-input" id="liveAnyImage" placeholder="https://example.com/any.jpg" style="margin-top:6px;font-size:11px;">
             <div class="live-url-box" id="liveAnyImageUrl"></div>
         </div>
         
@@ -374,7 +403,7 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:no
         <div id="live7thImageSection" style="display:none;">
             <div class="setting-group">
                 <label class="setting-label">7th Image URL (Optional)</label>
-                <input type="text" class="setting-input" id="live7thImageUrl" placeholder="https://example.com/7th-image.jpg">
+                <input type="text" class="setting-input live-mode-url-input" id="live7thImageUrl" placeholder="https://example.com/7th-image.jpg">
             </div>
         </div>
         
@@ -417,19 +446,19 @@ const userRef = database.ref('users/' + username);
 const APP_DOMAIN       = "https://googly.cc";
 const IMAGES_BASE_URL  = "https://images.googly.cc/";
 
-const CLOUD_API_BASE      = "https://mlkn.cc/api/";
-const UPLOAD_URL          = "https://mlkn.cc/api/upload_image.php";
-const GET_ALBUMS_LIST_URL = `${CLOUD_API_BASE}get_albums_list.php?username=${username}`;
-const SAVE_ALBUM_FILE_URL = `${CLOUD_API_BASE}save_album_file.php`;
-const DELETE_ALBUM_FILE_URL = `${CLOUD_API_BASE}delete_album_file.php`;
-const GET_SETTINGS_URL    = `${CLOUD_API_BASE}get_settings.php?username=${username}`;
-const SAVE_SETTINGS_URL   = `${CLOUD_API_BASE}save_settings.php`;
-const GET_FORCE_TRANSFER_URL = `${CLOUD_API_BASE}get_force_transfer.php?username=${username}`;
-const SAVE_FORCE_TRANSFER_URL = `${CLOUD_API_BASE}save_force_transfer.php`;
-const GET_SECRET_BUTTONS_URL = `${CLOUD_API_BASE}get_secret_buttons.php?username=${username}`;
-const SAVE_SECRET_BUTTONS_URL = `${CLOUD_API_BASE}save_secret_buttons.php`;
-const GET_LIVE_MODE_URL   = `${CLOUD_API_BASE}get_live_mode.php?username=${username}`;
-const SAVE_LIVE_MODE_URL  = `${CLOUD_API_BASE}save_live_mode.php`;
+/* =========================================================
+   ⭐ R2 DIRECT UPLOAD CONFIGURATION
+   ⚠️ CHANGE THESE to match your Cloudflare Worker + R2
+   ========================================================= */
+const R2_UPLOAD_URL = "https://upload.googly.cc/upload";   // ⚠️ Your Worker endpoint
+const R2_PUBLIC_URL = IMAGES_BASE_URL;                      // Public read base for R2
+
+/* ⭐ Legacy Hostinger endpoints — ONLY used once per user for migration on first login */
+const LEGACY_GET_ALBUMS_LIST_URL = `https://mlkn.cc/api/get_albums_list.php?username=${username}`;
+const LEGACY_GET_SETTINGS_URL    = `https://mlkn.cc/api/get_settings.php?username=${username}`;
+const LEGACY_GET_FORCE_TRANSFER_URL = `https://mlkn.cc/api/get_force_transfer.php?username=${username}`;
+const LEGACY_GET_SECRET_BUTTONS_URL = `https://mlkn.cc/api/get_secret_buttons.php?username=${username}`;
+const LEGACY_GET_LIVE_MODE_URL   = `https://mlkn.cc/api/get_live_mode.php?username=${username}`;
 
 const NTFY_TOPIC = `${username}infinity`;
 const PEEK_API_URL = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=`;
@@ -624,9 +653,8 @@ let touchStartTime = 0;
 let touchEndTime = 0;
 let touchMoved = false;
 
-/* Track which Live Mode slot is being uploaded */
-let pendingLiveMainSlot = null;    // "colorImage" | "suitImage" | "valueImage" | "gridImage" | "anyImage"
-let pendingLiveCardName = null;    // card name for card output upload
+let pendingLiveMainSlot = null;
+let pendingLiveCardName = null;
 
 /* =========================================================
    AUDIO
@@ -740,10 +768,6 @@ function stopGlitchAudio(){
         currentAudioSource = null;
     }
 }
-
-/* =========================================================
-   WAKE LOCK
-========================================================= */
 
 async function requestWakeLock(){
     try{ if("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); }catch(error){}
@@ -954,8 +978,8 @@ async function firebaseUserExists(){
 async function hostingerUserExists(){
     try{
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
-        const response = await fetch(GET_ALBUMS_LIST_URL, {
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const response = await fetch(LEGACY_GET_ALBUMS_LIST_URL, {
             cache:"no-store",
             headers:{Accept:"application/json"},
             signal: controller.signal
@@ -974,7 +998,7 @@ async function hostingerUserExists(){
 async function checkShahulbreakerActive(){
     try{
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
         const response = await fetch(SHAHULBREAKER_ACTIVATION_API, {
             cache: "no-store",
             signal: controller.signal
@@ -989,16 +1013,11 @@ async function checkShahulbreakerActive(){
 }
 
 async function migrateUserFromHostinger(){
-    console.log("🔄 Starting migration from Hostinger → Firebase for:", username);
-    showStatus("🔄 Migrating your data...", 8000);
+    console.log("🔄 Migrating user:", username);
+    showStatus("🔄 Migrating your data...", 6000);
 
     try{
-        const controller = new AbortController();
-        setTimeout(() => controller.abort(), 8000);
-        const response = await fetch(GET_ALBUMS_LIST_URL, {
-            cache: "no-store",
-            signal: controller.signal
-        });
+        const response = await fetch(LEGACY_GET_ALBUMS_LIST_URL, {cache: "no-store"});
         if(response.ok){
             const data = await response.json();
             if(data && data.success && data.albums){
@@ -1010,7 +1029,7 @@ async function migrateUserFromHostinger(){
     }catch(error){}
 
     try{
-        const response = await fetch(GET_SETTINGS_URL, {cache:"no-store"});
+        const response = await fetch(LEGACY_GET_SETTINGS_URL, {cache:"no-store"});
         if(response.ok){
             const data = await response.json();
             if(data && data.success && data.settings){
@@ -1020,7 +1039,7 @@ async function migrateUserFromHostinger(){
     }catch(error){}
 
     try{
-        const response = await fetch(GET_FORCE_TRANSFER_URL, {cache:"no-store"});
+        const response = await fetch(LEGACY_GET_FORCE_TRANSFER_URL, {cache:"no-store"});
         if(response.ok){
             const data = await response.json();
             if(data && data.success && data.forceTransfer){
@@ -1030,7 +1049,7 @@ async function migrateUserFromHostinger(){
     }catch(error){}
 
     try{
-        const response = await fetch(GET_SECRET_BUTTONS_URL, {cache:"no-store"});
+        const response = await fetch(LEGACY_GET_SECRET_BUTTONS_URL, {cache:"no-store"});
         if(response.ok){
             const data = await response.json();
             if(data && data.success && data.secretButtons){
@@ -1040,7 +1059,7 @@ async function migrateUserFromHostinger(){
     }catch(error){}
 
     try{
-        const response = await fetch(GET_LIVE_MODE_URL, {cache:"no-store"});
+        const response = await fetch(LEGACY_GET_LIVE_MODE_URL, {cache:"no-store"});
         if(response.ok){
             const data = await response.json();
             if(data && data.success && data.liveMode){
@@ -1066,7 +1085,7 @@ async function migrateUserFromHostinger(){
         });
     }catch(error){}
 
-    showStatus("✅ Data migrated successfully!", 3000);
+    showStatus("✅ Data migrated!", 2000);
 }
 
 async function activateNewUser(){
@@ -1102,7 +1121,7 @@ function redirectToGoogle(){
 }
 
 /* =========================================================
-   LOAD USER DATA
+   LOAD/SAVE — ALL FIREBASE ONLY (no PHP mirrors)
 ========================================================= */
 
 async function loadAllAlbums(){
@@ -1111,14 +1130,6 @@ async function loadAllAlbums(){
         if(fbAlbums && Object.keys(fbAlbums).length > 0){
             config.albums = fbAlbums;
             return true;
-        }
-        const response = await fetch(GET_ALBUMS_LIST_URL, {cache:"no-store",headers:{Accept:"application/json"}});
-        if(response.ok){
-            const data = await response.json();
-            if(data && data.success && data.albums && Object.keys(data.albums).length > 0){
-                config.albums = data.albums;
-                return true;
-            }
         }
     }catch(error){}
     return false;
@@ -1140,16 +1151,17 @@ async function loadSettings(){
 
 async function saveSettings(){
     try{
-        const settingsData = {dotSize: config.settings.dotSize, redGreenDelay: config.settings.redGreenDelay, glitchDuration: config.settings.glitchDuration};
+        const settingsData = {
+            dotSize: config.settings.dotSize,
+            redGreenDelay: config.settings.redGreenDelay,
+            glitchDuration: config.settings.glitchDuration
+        };
         await fbSet('users/' + username + '/settings', settingsData);
-        fetch(SAVE_SETTINGS_URL, {
-            method:"POST",
-            headers:{"Content-Type":"application/json", Accept:"application/json"},
-            body:JSON.stringify({username, settings: settingsData})
-        }).catch(()=>{});
         return true;
-    }catch(error){}
-    return false;
+    }catch(error){
+        console.error("saveSettings failed:", error);
+        return false;
+    }
 }
 
 function applySettings(){
@@ -1178,14 +1190,8 @@ async function loadForceTransferSettings(){
 async function saveForceTransferSettings(){
     try{
         await fbSet('users/' + username + '/forceTransfer', config.forceTransfer);
-        fetch(SAVE_FORCE_TRANSFER_URL, {
-            method:"POST",
-            headers:{"Content-Type":"application/json", Accept:"application/json"},
-            body:JSON.stringify({username, forceTransfer: config.forceTransfer})
-        }).catch(()=>{});
         return true;
-    }catch(error){}
-    return false;
+    }catch(error){ return false; }
 }
 
 function applyForceTransferSettings(){
@@ -1213,14 +1219,8 @@ async function loadSecretButtons(){
 async function saveSecretButtons(){
     try{
         await fbSet('users/' + username + '/secretButtons', config.secretButtons);
-        fetch(SAVE_SECRET_BUTTONS_URL, {
-            method:"POST",
-            headers:{"Content-Type":"application/json", Accept:"application/json"},
-            body:JSON.stringify({username, secretButtons: config.secretButtons})
-        }).catch(()=>{});
         return true;
-    }catch(error){}
-    return false;
+    }catch(error){ return false; }
 }
 
 function applySecretButtons(){
@@ -1233,10 +1233,6 @@ function applySecretButtons(){
     if(bottomLeft) bottomLeft.value = config.secretButtons.bottomLeft;
     if(middle) middle.value = config.secretButtons.middle;
 }
-
-/* =========================================================
-   LIVE MODE SETTINGS (load / save / apply)
-========================================================= */
 
 async function loadLiveModeSettings(){
     try{
@@ -1254,48 +1250,27 @@ async function loadLiveModeSettings(){
 
 async function saveLiveModeSettings(){
     try{
-        // Ensure cardOutputImages is properly synced from any pending inputs
         syncLiveModeInputsToConfig();
-
         await fbSet('users/' + username + '/liveMode', config.liveMode);
-        fetch(SAVE_LIVE_MODE_URL, {
-            method:"POST",
-            headers:{"Content-Type":"application/json", Accept:"application/json"},
-            body:JSON.stringify({username, liveMode: config.liveMode})
-        }).catch(()=>{});
         return true;
-    }catch(error){}
-    return false;
+    }catch(error){ return false; }
 }
 
-/**
- * Syncs all visible inputs into the config object.
- * This is called both on Save and before close.
- */
 function syncLiveModeInputsToConfig(){
-    const colorImgEl = document.getElementById("liveColorImage");
-    const suitImgEl = document.getElementById("liveSuitImage");
-    const valueImgEl = document.getElementById("liveValueImage");
-    const gridImgEl = document.getElementById("liveGridImage");
-    const anyImgEl = document.getElementById("liveAnyImage");
-    const seventhEl = document.getElementById("live7thImageUrl");
-
-    if(colorImgEl) config.liveMode.colorImage = colorImgEl.value.trim();
-    if(suitImgEl) config.liveMode.suitImage = suitImgEl.value.trim();
-    if(valueImgEl) config.liveMode.valueImage = valueImgEl.value.trim();
-    if(gridImgEl) config.liveMode.gridImage = gridImgEl.value.trim();
-    if(anyImgEl) config.liveMode.anyImage = anyImgEl.value.trim();
-    if(seventhEl) config.liveMode.seventhImageUrl = seventhEl.value.trim();
-
-    // Force-transfer album selector
-    const ftSel = document.getElementById("liveForceTransferAlbum");
+    const el = id => document.getElementById(id);
+    if(el("liveColorImage")) config.liveMode.colorImage = el("liveColorImage").value.trim();
+    if(el("liveSuitImage")) config.liveMode.suitImage = el("liveSuitImage").value.trim();
+    if(el("liveValueImage")) config.liveMode.valueImage = el("liveValueImage").value.trim();
+    if(el("liveGridImage")) config.liveMode.gridImage = el("liveGridImage").value.trim();
+    if(el("liveAnyImage")) config.liveMode.anyImage = el("liveAnyImage").value.trim();
+    if(el("live7thImageUrl")) config.liveMode.seventhImageUrl = el("live7thImageUrl").value.trim();
+    const ftSel = el("liveForceTransferAlbum");
     if(ftSel && config.liveMode.forceTransferEnabled){
         config.liveMode.forceTransferAlbum = ftSel.value;
     }
 }
 
 function applyLiveModeSettings(){
-    // Main image URL fields
     setInputValue("liveColorImage", config.liveMode.colorImage);
     setInputValue("liveSuitImage", config.liveMode.suitImage);
     setInputValue("liveValueImage", config.liveMode.valueImage);
@@ -1303,26 +1278,22 @@ function applyLiveModeSettings(){
     setInputValue("liveAnyImage", config.liveMode.anyImage);
     setInputValue("live7thImageUrl", config.liveMode.seventhImageUrl);
 
-    // Preview images + url text
     updateLiveImagePreview("liveColorImagePreview", "liveColorImageUrl", config.liveMode.colorImage);
     updateLiveImagePreview("liveSuitImagePreview", "liveSuitImageUrl", config.liveMode.suitImage);
     updateLiveImagePreview("liveValueImagePreview", "liveValueImageUrl", config.liveMode.valueImage);
     updateLiveImagePreview("liveGridImagePreview", "liveGridImageUrl", config.liveMode.gridImage);
     updateLiveImagePreview("liveAnyImagePreview", "liveAnyImageUrl", config.liveMode.anyImage);
 
-    // Toggles
     const forceTransferToggle = document.getElementById("liveForceTransferToggle");
     if(forceTransferToggle) forceTransferToggle.classList.toggle("active", !!config.liveMode.forceTransferEnabled);
     const seventhImageToggle = document.getElementById("live7thImageToggle");
     if(seventhImageToggle) seventhImageToggle.classList.toggle("active", !!config.liveMode.seventhImageEnabled);
 
-    // Sections
     const forceTransferSection = document.getElementById("liveForceTransferAlbumSection");
     if(forceTransferSection) forceTransferSection.style.display = config.liveMode.forceTransferEnabled ? "block" : "none";
     const seventhImageSection = document.getElementById("live7thImageSection");
     if(seventhImageSection) seventhImageSection.style.display = config.liveMode.seventhImageEnabled ? "block" : "none";
 
-    // Grid dot size
     const gds = config.liveMode.gridDotSize !== undefined ? config.liveMode.gridDotSize : 2;
     document.documentElement.style.setProperty("--grid-dot-size", gds + "px");
     const gdsEl = document.getElementById("gridDotSizeDisplay");
@@ -1341,13 +1312,8 @@ function updateLiveImagePreview(previewId, urlId, url){
     const preview = document.getElementById(previewId);
     const urlBox = document.getElementById(urlId);
     if(preview){
-        if(url){
-            preview.src = url;
-            preview.style.display = "block";
-        }else{
-            preview.src = "";
-            preview.style.display = "none";
-        }
+        if(url){ preview.src = url; preview.style.display = "block"; }
+        else { preview.src = ""; preview.style.display = "none"; }
     }
     if(urlBox) urlBox.textContent = url || "Tap image to upload";
 }
@@ -1394,7 +1360,7 @@ function validateLiveForceTransferAlbum(){
 }
 
 /* =========================================================
-   CARD OUTPUT IMAGES (render + upload)
+   CARD OUTPUT IMAGES
 ========================================================= */
 
 function renderCardOutputImages(){
@@ -1447,29 +1413,20 @@ function toggleCardOutputImages(){
     }
 }
 
-/* =========================================================
-   LIVE MODE MAIN IMAGE UPLOAD TRIGGER
-========================================================= */
-
 window.triggerLiveMainImageUpload = function(slotKey){
     pendingLiveMainSlot = slotKey;
     liveMainImageInput.click();
 };
 
 /* =========================================================
-   IMAGE COMPRESSION HELPERS
+   IMAGE COMPRESSION + UPLOAD (direct to R2)
 ========================================================= */
 
 const TARGET_IMAGE_SIZE_KB = 700;
 const TARGET_IMAGE_SIZE_BYTES = TARGET_IMAGE_SIZE_KB * 1024;
 
-/**
- * Compresses an image to ≤ maxSizeBytes. If the original is already
- * under the limit, returns the original file unchanged.
- */
 function compressImage(file, maxSizeBytes) {
     return new Promise((resolve, reject) => {
-        // Already small enough — keep as-is
         if (file.size <= maxSizeBytes) {
             resolve(file);
             return;
@@ -1504,9 +1461,7 @@ function compressImage(file, maxSizeBytes) {
                     const bstr = atob(arr[1]);
                     let n = bstr.length;
                     const u8arr = new Uint8Array(n);
-                    while (n--) {
-                        u8arr[n] = bstr.charCodeAt(n);
-                    }
+                    while (n--) u8arr[n] = bstr.charCodeAt(n);
                     return new Blob([u8arr], {type: mime});
                 }
 
@@ -1549,8 +1504,8 @@ function compressImage(file, maxSizeBytes) {
 }
 
 /**
- * Compresses (if needed) then uploads to images.googly.cc
- * Returns the uploaded image URL or null.
+ * Compress (if needed) → upload DIRECTLY to R2 via Cloudflare Worker
+ * Returns the public image URL or null.
  */
 async function uploadImageFile(file){
     let fileToUpload = file;
@@ -1563,20 +1518,30 @@ async function uploadImageFile(file){
     const formData = new FormData();
     formData.append("image", fileToUpload);
     try{
-        const response = await fetch(UPLOAD_URL, {method:"POST", body: formData});
+        const response = await fetch(R2_UPLOAD_URL, {
+            method: "POST",
+            body: formData
+        });
+        if(!response.ok){
+            console.error("Upload HTTP error:", response.status, response.statusText);
+            return null;
+        }
         const result = await response.json();
         if(result && result.success && result.link){
             return result.link;
         }
-    }catch(e){ console.warn("Upload failed:", e); }
-    return null;
+        console.error("Upload response not successful:", result);
+        return null;
+    }catch(e){
+        console.error("Upload fetch failed:", e);
+        return null;
+    }
 }
 
 /* =========================================================
-   LIVE MODE IMAGE UPLOAD — HANDLERS
+   LIVE MODE IMAGE UPLOAD HANDLERS
 ========================================================= */
 
-/* Main 5 slot uploads (also 7th image uses same handler on its own input) */
 liveMainImageInput.addEventListener("change", async function(e){
     const file = e.target.files[0];
     if(!file || !pendingLiveMainSlot){ e.target.value = ""; return; }
@@ -1584,7 +1549,6 @@ liveMainImageInput.addEventListener("change", async function(e){
     const link = await uploadImageFile(file);
     if(link){
         config.liveMode[pendingLiveMainSlot] = link;
-        // Update the input field & preview
         const inputMap = {
             colorImage: "liveColorImage",
             suitImage: "liveSuitImage",
@@ -1605,13 +1569,12 @@ liveMainImageInput.addEventListener("change", async function(e){
         if(pId && uId) updateLiveImagePreview(pId, uId, link);
         showStatus("✅ Image uploaded!", 2000);
     }else{
-        showStatus("❌ Upload failed", 2500);
+        showStatus("❌ Upload failed — check R2_UPLOAD_URL", 3000);
     }
     pendingLiveMainSlot = null;
     e.target.value = "";
 });
 
-/* Card output uploads */
 liveCardImageInput.addEventListener("change", async function(e){
     const file = e.target.files[0];
     if(!file || !pendingLiveCardName){ e.target.value = ""; return; }
@@ -1621,12 +1584,11 @@ liveCardImageInput.addEventListener("change", async function(e){
     if(link){
         if(!config.liveMode.cardOutputImages) config.liveMode.cardOutputImages = {};
         config.liveMode.cardOutputImages[cardName] = link;
-        // Save immediately to Firebase (auto-save)
         await saveLiveModeSettings();
         renderCardOutputImages();
         showStatus(`✅ ${cardName} saved!`, 2000);
     }else{
-        showStatus("❌ Upload failed", 2500);
+        showStatus("❌ Upload failed", 3000);
     }
     pendingLiveCardName = null;
     e.target.value = "";
@@ -1704,12 +1666,11 @@ function buildCarousel(){
     const imagesToRender = [...imageLinks];
     imagesToRender.unshift(imageLinks[TOTAL_IMAGES-1]);
     imagesToRender.push(imageLinks[0]);
-    imagesToRender.forEach((src, i)=>{
+    imagesToRender.forEach((src)=>{
         const slide = document.createElement("div");
         slide.className = "slide";
         const img = document.createElement("img");
         img.src = src;
-        img.alt = `Image ${i}`;
         img.loading = "eager";
         img.draggable = false;
         img.onerror = function(){
@@ -1731,9 +1692,7 @@ function updateTrackPosition(offsetX, animate=false){
     carouselTrack.style.transform = `translateX(${offsetX}px)`;
 }
 
-function getTranslateXByIndex(index){
-    return -index * window.innerWidth;
-}
+function getTranslateXByIndex(index){ return -index * window.innerWidth; }
 
 function goToIndex(index, animate=true, isSwipe=false){
     if(TOTAL_IMAGES === 0) return;
@@ -1780,12 +1739,11 @@ function rebuildCarouselAtCurrentPosition(){
     const imagesToRender = [...imageLinks];
     imagesToRender.unshift(imageLinks[TOTAL_IMAGES-1]);
     imagesToRender.push(imageLinks[0]);
-    imagesToRender.forEach((src, i)=>{
+    imagesToRender.forEach((src)=>{
         const slide = document.createElement("div");
         slide.className = "slide";
         const img = document.createElement("img");
         img.src = src;
-        img.alt = `Image ${i}`;
         img.loading = "eager";
         img.draggable = false;
         img.onerror = function(){
@@ -1836,15 +1794,12 @@ function startTrackerPolling(){
         }
 
         if(action === "redirect"){
-            // ⭐ FIX: Unlock audio before triggering glitch+redirect
             unlockAudio().then(()=>{
                 handleRedirectCommand().catch(console.error);
             });
         }else if(action !== "none" && !isNaN(action)){
             handleImageFromTracker(parseInt(action));
         }
-    }, error => {
-        console.error("Tracker listener failed:", error);
     });
 }
 
@@ -1896,7 +1851,6 @@ async function executeImmediateRedirect(){
     isRedirectModeActive = true;
     redDotIndicatorBottomLeft.classList.add("active");
     redDotIndicatorBottomLeft.classList.add("green");
-    // ⭐ Make sure audio is unlocked & loaded before glitch
     await unlockAudio();
     if(!audioLoaded) await loadGlitchAudio();
     const duration = Number(config.settings.glitchDuration) || 4;
@@ -2093,9 +2047,7 @@ function updateLiveTrackPosition(offsetX, animate=false){
     carouselTrack.style.transform = `translateX(${offsetX}px)`;
 }
 
-function getLiveTranslateXByIndex(index){
-    return -index * window.innerWidth;
-}
+function getLiveTranslateXByIndex(index){ return -index * window.innerWidth; }
 
 function goToLiveSlide(index, animate=true){
     if(index < 0) index = 0;
@@ -2197,10 +2149,8 @@ function bindLiveModeEvents(){
 function handleLiveTouchStart(e){
     if(e.touches.length === 1){
         const t = e.touches[0];
-        liveTouchStartX = t.clientX;
-        liveTouchStartY = t.clientY;
-        liveTouchCurrentX = t.clientX;
-        liveTouchCurrentY = t.clientY;
+        liveTouchStartX = t.clientX; liveTouchStartY = t.clientY;
+        liveTouchCurrentX = t.clientX; liveTouchCurrentY = t.clientY;
         liveTouchStartTime = Date.now();
         liveIsDragging = true;
         liveStartTranslateX = getLiveTranslateXByIndex(liveCurrentSlide);
@@ -2211,8 +2161,7 @@ function handleLiveTouchStart(e){
 function handleLiveTouchMove(e){
     if(!liveIsDragging || e.touches.length !== 1) return;
     const t = e.touches[0];
-    liveTouchCurrentX = t.clientX;
-    liveTouchCurrentY = t.clientY;
+    liveTouchCurrentX = t.clientX; liveTouchCurrentY = t.clientY;
     const deltaX = liveTouchCurrentX - liveTouchStartX;
     const deltaY = liveTouchCurrentY - liveTouchStartY;
     if(Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10){
@@ -2241,30 +2190,19 @@ function handleLiveTouchEnd(){
                 }
             }
             goToLiveSlide(liveCurrentSlide + 1);
-        }else{
-            goToLiveSlide(liveCurrentSlide, true);
-        }
+        }else goToLiveSlide(liveCurrentSlide, true);
     }else if(deltaX > threshold){
-        if(liveCurrentSlide > 0){
-            goToLiveSlide(liveCurrentSlide - 1);
-        }else{
-            goToLiveSlide(liveCurrentSlide, true);
-        }
-    }else{
-        goToLiveSlide(liveCurrentSlide, true);
-    }
+        if(liveCurrentSlide > 0) goToLiveSlide(liveCurrentSlide - 1);
+        else goToLiveSlide(liveCurrentSlide, true);
+    }else goToLiveSlide(liveCurrentSlide, true);
 }
 
-let liveMouseDown = false;
-let liveMouseStartX = 0;
-let liveMouseCurrentX = 0;
-let liveMouseStartTranslateX = 0;
+let liveMouseDown = false, liveMouseStartX = 0, liveMouseCurrentX = 0, liveMouseStartTranslateX = 0;
 
 function handleLiveMouseDown(e){
     if(e.button !== 0) return;
     liveMouseDown = true;
-    liveMouseStartX = e.clientX;
-    liveMouseCurrentX = e.clientX;
+    liveMouseStartX = e.clientX; liveMouseCurrentX = e.clientX;
     liveMouseStartTranslateX = getLiveTranslateXByIndex(liveCurrentSlide);
     liveTouchStartTime = Date.now();
     carouselTrack.style.transition = "none";
@@ -2303,18 +2241,11 @@ function handleLiveMouseUp(){
                 }
             }
             goToLiveSlide(liveCurrentSlide + 1);
-        }else{
-            goToLiveSlide(liveCurrentSlide, true);
-        }
+        }else goToLiveSlide(liveCurrentSlide, true);
     }else if(deltaX > threshold){
-        if(liveCurrentSlide > 0){
-            goToLiveSlide(liveCurrentSlide - 1);
-        }else{
-            goToLiveSlide(liveCurrentSlide, true);
-        }
-    }else{
-        goToLiveSlide(liveCurrentSlide, true);
-    }
+        if(liveCurrentSlide > 0) goToLiveSlide(liveCurrentSlide - 1);
+        else goToLiveSlide(liveCurrentSlide, true);
+    }else goToLiveSlide(liveCurrentSlide, true);
 }
 
 function processLiveSwipe(duration, distance){
@@ -2323,11 +2254,8 @@ function processLiveSwipe(duration, distance){
     if(liveCurrentSlide === 0){
         liveSelectedColor = isFast ? 'red' : 'black';
     }else if(liveCurrentSlide === 1){
-        if(liveSelectedColor === 'red'){
-            liveSelectedSuit = isFast ? 'hearts' : 'diamonds';
-        }else if(liveSelectedColor === 'black'){
-            liveSelectedSuit = isFast ? 'spades' : 'clubs';
-        }
+        if(liveSelectedColor === 'red') liveSelectedSuit = isFast ? 'hearts' : 'diamonds';
+        else if(liveSelectedColor === 'black') liveSelectedSuit = isFast ? 'spades' : 'clubs';
     }else if(liveCurrentSlide === 2){
         liveSelectedCategory = isFast ? 'number' : 'letter';
     }
@@ -2399,18 +2327,14 @@ function performRedirect(){
     if(!redirectUrl) redirectUrl = "https://www.google.com";
     const isValidUrl = /^(https?:\/\/)/i.test(redirectUrl);
     let finalUrl;
-    if(isValidUrl){
-        finalUrl = redirectUrl;
-    }else{
-        const searchQuery = encodeURIComponent(redirectUrl);
-        finalUrl = `https://www.google.com/search?q=${searchQuery}`;
-    }
+    if(isValidUrl) finalUrl = redirectUrl;
+    else finalUrl = `https://www.google.com/search?q=${encodeURIComponent(redirectUrl)}`;
     clearBrowserHistory(finalUrl);
     setTimeout(()=>{ window.location.replace(finalUrl); }, 100);
 }
 
 /* =========================================================
-   IMPORT/EXPORT (Album + Live Mode)
+   IMPORT/EXPORT
 ========================================================= */
 
 window.exportAlbum = function(){
@@ -2432,9 +2356,9 @@ window.exportAlbum = function(){
         downloadLink.click();
         document.body.removeChild(downloadLink);
         URL.revokeObjectURL(url);
-        showStatus(`✅ Album "${album.name}" exported successfully!`);
+        showStatus(`✅ Album "${album.name}" exported!`);
     }catch(error){
-        showStatus("❌ Failed to export album");
+        showStatus("❌ Export failed");
     }
 };
 
@@ -2442,31 +2366,35 @@ window.importAlbum = function(){
     importAlbumInput.click();
 };
 
-importAlbumInput.addEventListener("change", function(e){
+importAlbumInput.addEventListener("change", async function(e){
     const file = e.target.files[0];
     if(!file) return;
     const reader = new FileReader();
-    reader.onload = function(event){
+    reader.onload = async function(event){
         try{
             const importedData = JSON.parse(event.target.result);
             let albumData;
             if(importedData.album){ albumData = importedData.album; }
             else if(importedData.name && importedData.images){ albumData = importedData; }
-            else{ throw new Error("Invalid album file format"); }
-            if(!albumData.name || !Array.isArray(albumData.images)){ throw new Error("Invalid album data structure"); }
+            else throw new Error("Invalid album file format");
+            if(!albumData.name || !Array.isArray(albumData.images)) throw new Error("Invalid album data");
+
             let albumName = albumData.name;
             let counter = 1;
             while(config.albums[albumName]){ albumName = `${albumData.name}_${counter}`; counter++; }
             albumData.name = albumName;
             config.albums[albumName] = albumData;
+
+            // ⭐ Save to Firebase
+            await fbSet('users/' + username + '/albums/' + albumName, albumData);
+
             config.selectedAlbum = albumName;
-            saveAlbumFile(albumName, albumData);
             applyConfig();
             updateAlbumSelector();
-            renderAlbumContent();
-            showStatus(`✅ Album "${albumName}" imported successfully!`);
+
+            showStatus(`✅ Album "${albumName}" imported!`);
         }catch(error){
-            showStatus("❌ Failed to import album: " + error.message);
+            showStatus("❌ Import failed: " + error.message);
         }
     };
     reader.onerror = function(){ showStatus("❌ Failed to read file"); };
@@ -2474,10 +2402,8 @@ importAlbumInput.addEventListener("change", function(e){
     e.target.value = "";
 });
 
-/* ⭐ Live Mode Import/Export */
 window.exportLiveModeSettings = function(){
     try{
-        // Sync inputs first so we export current visible state
         syncLiveModeInputsToConfig();
         const exportData = {
             version: "1.0",
@@ -2517,7 +2443,6 @@ liveModeImportInput.addEventListener("change", function(e){
             else if(imported.colorImage || imported.suitImage || imported.gridDotSize !== undefined) liveData = imported;
             if(!liveData) throw new Error("Invalid LIVE Mode JSON");
 
-            // Merge with defaults
             config.liveMode = {
                 colorImage: liveData.colorImage || "",
                 suitImage: liveData.suitImage || "",
@@ -2590,10 +2515,8 @@ function handleTouchStart(e){
     unlockAudio();
     if(e.touches.length === 1){
         const t = e.touches[0];
-        touchStartX = t.clientX;
-        touchStartY = t.clientY;
-        touchCurrentX = t.clientX;
-        touchCurrentY = t.clientY;
+        touchStartX = t.clientX; touchStartY = t.clientY;
+        touchCurrentX = t.clientX; touchCurrentY = t.clientY;
         touchStartTime = Date.now();
         touchMoved = false;
         isDragging = true;
@@ -2605,8 +2528,7 @@ function handleTouchStart(e){
 function handleTouchMove(e){
     if(!isDragging || e.touches.length !== 1) return;
     const t = e.touches[0];
-    touchCurrentX = t.clientX;
-    touchCurrentY = t.clientY;
+    touchCurrentX = t.clientX; touchCurrentY = t.clientY;
     const deltaX = touchCurrentX - touchStartX;
     const deltaY = touchCurrentY - touchStartY;
     if(Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10){
@@ -2620,7 +2542,6 @@ function handleTouchEnd(){
     if(!isDragging) return;
     isDragging = false;
     const deltaX = touchCurrentX - touchStartX;
-    const deltaY = touchCurrentY - touchStartY;
     const threshold = window.innerWidth * .2;
     const touchDuration = Date.now() - touchStartTime;
     if(deltaX < -threshold){ nextImage(); return; }
@@ -2633,47 +2554,44 @@ function handleTouchEnd(){
         if(x < 150 && y < 150){
             const now = Date.now();
             if(now - lastTapTimeTopLeft < DOUBLE_TAP_DELAY){ openSettings(); lastTapTimeTopLeft = 0; }
-            else{ lastTapTimeTopLeft = now; }
+            else lastTapTimeTopLeft = now;
             return;
         }
         if(x > screenWidth - 150 && y < 150){
             const now = Date.now();
             if(now - lastTapTimeTopRight < DOUBLE_TAP_DELAY){ executeSecretButtonAction("topRight"); lastTapTimeTopRight = 0; }
-            else{ lastTapTimeTopRight = now; }
+            else lastTapTimeTopRight = now;
             return;
         }
         if(x < 150 && y > screenHeight - 150){
             const now = Date.now();
             if(now - lastTapTimeBottomLeft < DOUBLE_TAP_DELAY){ executeSecretButtonAction("bottomLeft"); lastTapTimeBottomLeft = 0; }
-            else{ lastTapTimeBottomLeft = now; }
+            else lastTapTimeBottomLeft = now;
             return;
         }
         if(x > screenWidth - 150 && y > screenHeight - 150){
             const now = Date.now();
             if(now - lastTapTimeBottomRight < DOUBLE_TAP_DELAY){ executeSecretButtonAction("bottomRight"); lastTapTimeBottomRight = 0; }
-            else{ lastTapTimeBottomRight = now; }
+            else lastTapTimeBottomRight = now;
             return;
         }
         if(Math.abs(x - screenWidth/2) < 100 && Math.abs(y - screenHeight/2) < 100){
             const now = Date.now();
             if(now - lastTapTimeCenter < DOUBLE_TAP_DELAY){ executeSecretButtonAction("middle"); lastTapTimeCenter = 0; }
-            else{ lastTapTimeCenter = now; }
+            else lastTapTimeCenter = now;
             return;
         }
     }
     goToIndex(currentIndex, true, false);
 }
 
-let mouseDown = false, mouseStartX = 0, mouseCurrentX = 0, mouseStartTranslateX = 0;
-let mouseStartTime = 0;
-let mouseMoved = false;
+let mouseDown = false, mouseStartX = 0, mouseCurrentX = 0, mouseStartTranslateX = 0, mouseStartTime = 0, mouseMoved = false;
 
 function handleMouseDown(e){
     if(e.button !== 0) return;
     unlockAudio();
     mouseDown = true;
-    mouseStartX = e.clientX;
-    mouseCurrentX = e.clientX;
+    mouseStartX = e.clientX; mouseCurrentX = e.clientX;
     mouseStartTranslateX = getTranslateXByIndex(currentIndex);
     mouseStartTime = Date.now();
     mouseMoved = false;
@@ -2710,31 +2628,31 @@ function handleMouseUp(){
         if(x < 150 && y < 150){
             const now = Date.now();
             if(now - lastTapTimeTopLeft < DOUBLE_TAP_DELAY){ openSettings(); lastTapTimeTopLeft = 0; }
-            else{ lastTapTimeTopLeft = now; }
+            else lastTapTimeTopLeft = now;
             return;
         }
         if(x > screenWidth - 150 && y < 150){
             const now = Date.now();
             if(now - lastTapTimeTopRight < DOUBLE_TAP_DELAY){ executeSecretButtonAction("topRight"); lastTapTimeTopRight = 0; }
-            else{ lastTapTimeTopRight = now; }
+            else lastTapTimeTopRight = now;
             return;
         }
         if(x < 150 && y > screenHeight - 150){
             const now = Date.now();
             if(now - lastTapTimeBottomLeft < DOUBLE_TAP_DELAY){ executeSecretButtonAction("bottomLeft"); lastTapTimeBottomLeft = 0; }
-            else{ lastTapTimeBottomLeft = now; }
+            else lastTapTimeBottomLeft = now;
             return;
         }
         if(x > screenWidth - 150 && y > screenHeight - 150){
             const now = Date.now();
             if(now - lastTapTimeBottomRight < DOUBLE_TAP_DELAY){ executeSecretButtonAction("bottomRight"); lastTapTimeBottomRight = 0; }
-            else{ lastTapTimeBottomRight = now; }
+            else lastTapTimeBottomRight = now;
             return;
         }
         if(Math.abs(x - screenWidth/2) < 100 && Math.abs(y - screenHeight/2) < 100){
             const now = Date.now();
             if(now - lastTapTimeCenter < DOUBLE_TAP_DELAY){ executeSecretButtonAction("middle"); lastTapTimeCenter = 0; }
-            else{ lastTapTimeCenter = now; }
+            else lastTapTimeCenter = now;
             return;
         }
     }
@@ -2791,8 +2709,9 @@ window.saveSettingsAndClose = async function(){
     const settingsSaved = await saveSettings();
     const forceSaved = await saveForceTransferSettings();
     const secretSaved = await saveSecretButtons();
+    // Save all albums to Firebase too
     for(const albumName in config.albums){
-        await saveAlbumFile(albumName, config.albums[albumName]);
+        await fbSet('users/' + username + '/albums/' + albumName, config.albums[albumName]);
     }
     sendToTracker("none");
     if(settingsSaved && forceSaved && secretSaved){ showStatus("✅ Settings saved successfully"); }
@@ -2830,7 +2749,7 @@ window.saveCurrentAlbumAndClose = async function(){
         document.getElementById("albumsPage").classList.remove("active");
         document.getElementById("settingsPage").classList.add("active");
         updateAlbumSelector();
-        showStatus("Album saved");
+        showStatus("✅ Album saved");
     }
 };
 window.openLiveModePage = function(){
@@ -2839,7 +2758,6 @@ window.openLiveModePage = function(){
     applyLiveModeSettings();
 };
 window.closeLiveModePage = function(){
-    // Sync any changed inputs into config before closing
     syncLiveModeInputsToConfig();
     document.getElementById("liveModePage").classList.remove("active");
     document.getElementById("settingsPage").classList.add("active");
@@ -2849,11 +2767,11 @@ window.saveLiveModeSettings = async function(){
     syncLiveModeInputsToConfig();
     const liveModeSaved = await saveLiveModeSettings();
     if(liveModeSaved){
-        showStatus("✅ LIVE Mode settings saved successfully");
+        showStatus("✅ LIVE Mode settings saved!");
         document.getElementById("liveModePage").classList.remove("active");
         document.getElementById("settingsPage").classList.add("active");
     }else{
-        showStatus("❌ Failed to save LIVE Mode settings");
+        showStatus("❌ Failed to save");
     }
 };
 window.toggleCardOutputImages = function(){ toggleCardOutputImages(); };
@@ -2979,26 +2897,15 @@ window.renderAlbumContent = function(){
     exportBtn.onclick = function(){ exportAlbum(); };
     content.appendChild(exportBtn);
     
-    const importBtn = document.createElement("button");
-    importBtn.className = "import-album-btn";
-    importBtn.textContent = "📤 Import Album";
-    importBtn.onclick = function(){ importAlbum(); };
-    content.appendChild(importBtn);
-    
     const saveBtn = document.createElement("button");
     saveBtn.className = "save-album-btn";
     saveBtn.textContent = "💾 Save Album";
     saveBtn.onclick = async function(){
         const saved = await saveCurrentAlbumFromForm();
-        if(saved) showStatus("Album saved");
+        if(saved) showStatus("✅ Album saved");
+        else showStatus("❌ Failed to save");
     };
     content.appendChild(saveBtn);
-    
-    const deleteBtn = document.createElement("button");
-    deleteBtn.className = "delete-album-btn";
-    deleteBtn.textContent = "🗑 Delete Album";
-    deleteBtn.onclick = function(){ showDeleteConfirmation(); };
-    content.appendChild(deleteBtn);
 };
 
 function escapeHtmlAttribute(value){
@@ -3011,29 +2918,6 @@ window.toggleApiMode = function(){
     album.apiMode = !album.apiMode;
     renderAlbumContent();
 };
-
-window.showDeleteConfirmation = function(){
-    if(confirm("Are you sure you want to delete the album?")){ deleteCurrentAlbum(); }
-};
-
-async function deleteCurrentAlbum(){
-    const albumName = config.selectedAlbum;
-    if(!albumName) return;
-    const success = await deleteAlbumFile(albumName);
-    if(success){
-        delete config.albums[albumName];
-        const remainingAlbums = Object.keys(config.albums);
-        if(remainingAlbums.length > 0){ config.selectedAlbum = remainingAlbums[0]; }
-        else{ config.selectedAlbum = null; }
-        applyConfig();
-        document.getElementById("albumsPage").classList.remove("active");
-        document.getElementById("settingsPage").classList.add("active");
-        updateAlbumSelector();
-        showStatus("Album deleted");
-    }else{
-        showStatus("❌ Failed to delete album");
-    }
-}
 
 window.deleteImageRow = function(index){
     const album = config.albums[config.selectedAlbum];
@@ -3059,11 +2943,17 @@ async function saveCurrentAlbumFromForm(){
     for(let i = 0; i < maxLength; i++){
         const name = nameInputs[i] ? nameInputs[i].value.trim() : "";
         const value = valueInputs[i] ? valueInputs[i].value.trim() : "";
-        if(name || value){ album.images.push({name: name || `Image ${i+1}`, value}); }
+        if(name || value) album.images.push({name: name || `Image ${i+1}`, value});
     }
-    const saved = await saveAlbumFile(config.selectedAlbum, album);
-    if(saved) applyConfig();
-    return saved;
+    // ⭐ Save to Firebase
+    try{
+        await fbSet('users/' + username + '/albums/' + config.selectedAlbum, album);
+        applyConfig();
+        return true;
+    }catch(error){
+        console.error("saveAlbum failed:", error);
+        return false;
+    }
 }
 
 /* =========================================================
@@ -3082,20 +2972,20 @@ directUploadInput.addEventListener("change", async function(e){
         const file = files[i];
         const link = await uploadImageFile(file);
         if(link){
-            const imageNumber = extractImageNumber(link);
-            newImages.push({name: file.name.replace(/\.[^/.]+$/, "") || `Image ${imageNumber || (i+1)}`, value: link});
+            newImages.push({name: file.name.replace(/\.[^/.]+$/, "") || `Image ${i+1}`, value: link});
             uploadedCount++;
         }
     }
     if(uploadedCount > 0){
         if(!album.images) album.images = [];
         album.images = [...album.images, ...newImages];
-        await saveAlbumFile(config.selectedAlbum, album);
+        // ⭐ Save to Firebase
+        await fbSet('users/' + username + '/albums/' + config.selectedAlbum, album);
         applyConfig();
         renderAlbumContent();
         showStatus(`✅ ${uploadedCount} image(s) uploaded!`);
     }else{
-        showStatus("❌ Upload failed. Please try again.");
+        showStatus("❌ Upload failed. Check R2 config.", 4000);
     }
     directUploadInput.value = "";
 });
@@ -3106,10 +2996,10 @@ function extractImageNumber(url){
 }
 
 /* =========================================================
-   CREATE ALBUM
+   CREATE / DELETE ALBUM
 ========================================================= */
 
-window.createNewAlbum = function(){
+window.createNewAlbum = async function(){
     const name = prompt("Enter album name:");
     if(name && name.trim()){
         const trimmedName = name.trim();
@@ -3120,13 +3010,45 @@ window.createNewAlbum = function(){
             apiMode: false,
             apiUrl: "",
             jsonField: "",
-            images: [{name: "Image 1", value: ""}]
+            images: []
         };
+        // ⭐ Save to Firebase
+        try{
+            await fbSet('users/' + username + '/albums/' + trimmedName, config.albums[trimmedName]);
+        }catch(e){ console.error(e); }
+
         config.selectedAlbum = trimmedName;
-        saveAlbumFile(trimmedName, config.albums[trimmedName]);
         updateAlbumSelector();
+        // ⭐ Open the albums page directly so user can upload immediately
         openAlbumsPage();
-        showStatus(`Album "${trimmedName}" created`);
+        showStatus(`✅ Album "${trimmedName}" created`);
+    }
+};
+
+// ⭐ Delete album from main settings page
+window.deleteSelectedAlbumFromSettings = async function(){
+    const albumName = config.selectedAlbum;
+    if(!albumName){ showStatus("❌ No album selected"); return; }
+    if(!confirm(`Delete album "${albumName}"? This cannot be undone.`)) return;
+
+    try{
+        // ⭐ Delete from Firebase
+        await database.ref('users/' + username + '/albums/' + albumName).remove();
+        delete config.albums[albumName];
+
+        const remaining = Object.keys(config.albums);
+        if(remaining.length > 0) config.selectedAlbum = remaining[0];
+        else config.selectedAlbum = null;
+
+        applyConfig();
+        updateAlbumSelector();
+        // ⭐ Also save settings so the change persists
+        await saveSettings();
+
+        showStatus(`✅ Album "${albumName}" deleted`);
+    }catch(error){
+        console.error("deleteAlbum error:", error);
+        showStatus("❌ Failed to delete album");
     }
 };
 
@@ -3267,6 +3189,13 @@ async function loadUserDataAndStart(){
     if(!isGodMode){ startTrackerPolling(); }
     requestWakeLock();
     setTimeout(()=>{ showLoading(false); }, 1000);
+}
+
+function initializeDefaultConfig(){
+    config.albums = {};
+    config.albums.cartoon = JSON.parse(JSON.stringify(CARTOON_ALBUM));
+    config.selectedAlbum = "cartoon";
+    fbSet('users/' + username + '/albums/cartoon', config.albums.cartoon);
 }
 
 init();
