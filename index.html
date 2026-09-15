@@ -5,776 +5,113 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover">
 <title>📸 Full Screen Album</title>
 
-<!-- Firebase SDK (compat build for easy drop-in) -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 
 <style>
-:root{--dot-size:3px}
-
-*{
-    margin:0;
-    padding:0;
-    box-sizing:border-box;
-    user-select:none;
-    -webkit-tap-highlight-color:transparent;
-    -webkit-touch-callout:none;
-}
-
-html,body{
-    width:100%;
-    height:100%;
-    background:#000;
-    overflow:hidden;
-    touch-action:none;
-    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    overscroll-behavior:none;
-}
-
-.carousel-container{
-    position:relative;
-    width:100%;
-    height:100%;
-    overflow:hidden;
-    background:#000;
-}
-
-.carousel-track{
-    display:flex;
-    width:100%;
-    height:100%;
-    transition:transform .35s cubic-bezier(.23,1,.32,1);
-    will-change:transform;
-    cursor:grab;
-    touch-action:none;
-}
-
-.slide{
-    flex:0 0 100%;
-    width:100%;
-    height:100%;
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    background:#000;
-    pointer-events:none;
-    position:relative;
-}
-
-.slide img{
-    width:100%;
-    height:100%;
-    object-fit:contain;
-    background:#000;
-    pointer-events:none;
-    -webkit-user-drag:none;
-    border:0;
-    outline:0;
-}
-
-.invisible-btn-top-right,
-.invisible-btn-top-left,
-.invisible-btn-bottom-right,
-.invisible-btn-bottom-left{
-    position:fixed;
-    width:150px;
-    height:150px;
-    z-index:50;
-    background:transparent;
-    border:0;
-    outline:0;
-    pointer-events:none;
-    cursor:default;
-    -webkit-tap-highlight-color:transparent;
-}
-
+:root{--dot-size:3px;--grid-dot-size:2px}
+*{margin:0;padding:0;box-sizing:border-box;user-select:none;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none}
+html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:none;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overscroll-behavior:none}
+.carousel-container{position:relative;width:100%;height:100%;overflow:hidden;background:#000}
+.carousel-track{display:flex;width:100%;height:100%;transition:transform .35s cubic-bezier(.23,1,.32,1);will-change:transform;cursor:grab;touch-action:none}
+.slide{flex:0 0 100%;width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:#000;pointer-events:none;position:relative}
+.slide img{width:100%;height:100%;object-fit:contain;background:#000;pointer-events:none;-webkit-user-drag:none;border:0;outline:0}
+.invisible-btn-top-right,.invisible-btn-top-left,.invisible-btn-bottom-right,.invisible-btn-bottom-left{position:fixed;width:150px;height:150px;z-index:50;background:transparent;border:0;outline:0;pointer-events:none;cursor:default;-webkit-tap-highlight-color:transparent}
 .invisible-btn-top-right{top:0;right:0}
 .invisible-btn-top-left{top:0;left:0}
 .invisible-btn-bottom-right{bottom:0;right:0}
 .invisible-btn-bottom-left{bottom:0;left:0}
-
-.invisible-btn-center{
-    position:fixed;
-    top:50%;
-    left:50%;
-    transform:translate(-50%,-50%);
-    width:200px;
-    height:200px;
-    border-radius:50%;
-    z-index:40;
-    background:transparent;
-    border:0;
-    outline:0;
-    pointer-events:none;
-    cursor:default;
-}
-
-.invisible-buttons-disabled .invisible-btn-top-right,
-.invisible-buttons-disabled .invisible-btn-top-left,
-.invisible-buttons-disabled .invisible-btn-bottom-right,
-.invisible-buttons-disabled .invisible-btn-bottom-left,
-.invisible-buttons-disabled .invisible-btn-center{
-    pointer-events:none !important;
-    z-index:0 !important;
-}
-
-.red-dot-indicator-top,
-.red-dot-indicator-bottom,
-.red-dot-indicator-bottom-left{
-    position:fixed;
-    width:var(--dot-size);
-    height:var(--dot-size);
-    background:red;
-    border-radius:50%;
-    z-index:100;
-    opacity:0;
-    transition:opacity .2s ease,background-color .3s ease;
-    pointer-events:none;
-    box-shadow:0 0 calc(var(--dot-size)*.8) rgba(255,0,0,.9);
-}
-
+.invisible-btn-center{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:200px;height:200px;border-radius:50%;z-index:40;background:transparent;border:0;outline:0;pointer-events:none;cursor:default}
+.invisible-buttons-disabled .invisible-btn-top-right,.invisible-buttons-disabled .invisible-btn-top-left,.invisible-buttons-disabled .invisible-btn-bottom-right,.invisible-buttons-disabled .invisible-btn-bottom-left,.invisible-buttons-disabled .invisible-btn-center{pointer-events:none !important;z-index:0 !important}
+.red-dot-indicator-top,.red-dot-indicator-bottom,.red-dot-indicator-bottom-left{position:fixed;width:var(--dot-size);height:var(--dot-size);background:red;border-radius:50%;z-index:100;opacity:0;transition:opacity .2s ease,background-color .3s ease;pointer-events:none;box-shadow:0 0 calc(var(--dot-size)*.8) rgba(255,0,0,.9)}
 .red-dot-indicator-top{top:20px;right:20px}
 .red-dot-indicator-bottom{bottom:20px;right:20px}
 .red-dot-indicator-bottom-left{bottom:20px;left:20px}
-
-.red-dot-indicator-top.active,
-.red-dot-indicator-bottom.active,
-.red-dot-indicator-bottom-left.active{
-    opacity:1;
-}
-
-.red-dot-indicator-bottom-left.green{
-    background:#00ff00;
-    box-shadow:0 0 calc(var(--dot-size)*.8) rgba(0,255,0,.9);
-}
-
-.settings-page,
-.albums-page,
-.live-mode-page{
-    position:fixed;
-    top:0;
-    left:0;
-    width:100%;
-    height:100%;
-    background:#1a1a1a;
-    z-index:1000;
-    overflow-y:auto;
-    display:none;
-    color:#fff;
-}
-
+.red-dot-indicator-top.active,.red-dot-indicator-bottom.active,.red-dot-indicator-bottom-left.active{opacity:1}
+.red-dot-indicator-bottom-left.green{background:#00ff00;box-shadow:0 0 calc(var(--dot-size)*.8) rgba(0,255,0,.9)}
+.settings-page,.albums-page,.live-mode-page{position:fixed;top:0;left:0;width:100%;height:100%;background:#1a1a1a;z-index:1000;overflow-y:auto;display:none;color:#fff}
 .albums-page{z-index:2000}
 .live-mode-page{z-index:3000}
-
-.settings-page.active,
-.albums-page.active,
-.live-mode-page.active{
-    display:flex;
-    flex-direction:column;
-}
-
-.settings-header{
-    padding:15px;
-    background:#2a2a2a;
-    display:flex;
-    align-items:center;
-    position:sticky;
-    top:0;
-    z-index:10;
-    gap:8px;
-}
-
-.back-btn{
-    background:#444;
-    color:#fff;
-    border:0;
-    padding:10px 12px;
-    border-radius:5px;
-    cursor:pointer;
-    font-size:13px;
-    white-space:nowrap;
-}
-
-.save-settings-btn{
-    background:#28a745;
-    color:#fff;
-    border:0;
-    padding:10px 12px;
-    border-radius:5px;
-    cursor:pointer;
-    font-size:13px;
-    margin-left:auto;
-    white-space:nowrap;
-}
-
-.settings-content{
-    padding:20px;
-    flex:1;
-}
-
-.settings-title{
-    text-align:center;
-    font-size:18px;
-    font-weight:bold;
-    color:#ffd700;
-    margin-bottom:20px;
-    letter-spacing:1px;
-    text-transform:uppercase;
-}
-
-.settings-subtitle{
-    text-align:center;
-    font-size:16px;
-    font-weight:bold;
-    color:#4fc3f7;
-    margin-bottom:15px;
-    letter-spacing:0.5px;
-    padding-top:20px;
-    border-top:1px solid #444;
-}
-
-.setting-group{
-    margin-bottom:20px;
-}
-
-.setting-label{
-    display:block;
-    margin-bottom:8px;
-    font-size:14px;
-    color:#ccc;
-    text-align:center;
-}
-
-.setting-input{
-    width:100%;
-    padding:12px;
-    background:#333;
-    border:1px solid #444;
-    border-radius:5px;
-    color:#fff;
-    font-size:16px;
-}
-
-.album-selector,
-.mode-selector{
-    width:100%;
-    padding:12px;
-    background:#333;
-    border:1px solid #444;
-    border-radius:5px;
-    color:#fff;
-    font-size:16px;
-}
-
-.open-albums-btn,
-.create-album-btn,
-.open-live-mode-btn{
-    width:100%;
-    padding:15px;
-    background:#007bff;
-    color:#fff;
-    border:0;
-    border-radius:5px;
-    cursor:pointer;
-    font-size:16px;
-    margin-top:10px;
-}
-
+.settings-page.active,.albums-page.active,.live-mode-page.active{display:flex;flex-direction:column}
+.settings-header{padding:15px;background:#2a2a2a;display:flex;align-items:center;position:sticky;top:0;z-index:10;gap:8px}
+.back-btn{background:#444;color:#fff;border:0;padding:10px 12px;border-radius:5px;cursor:pointer;font-size:13px;white-space:nowrap}
+.save-settings-btn{background:#28a745;color:#fff;border:0;padding:10px 12px;border-radius:5px;cursor:pointer;font-size:13px;margin-left:auto;white-space:nowrap}
+.settings-content{padding:20px;flex:1}
+.settings-title{text-align:center;font-size:18px;font-weight:bold;color:#ffd700;margin-bottom:20px;letter-spacing:1px;text-transform:uppercase}
+.settings-subtitle{text-align:center;font-size:16px;font-weight:bold;color:#4fc3f7;margin-bottom:15px;letter-spacing:0.5px;padding-top:20px;border-top:1px solid #444}
+.setting-group{margin-bottom:20px}
+.setting-label{display:block;margin-bottom:8px;font-size:14px;color:#ccc;text-align:center}
+.setting-input{width:100%;padding:12px;background:#333;border:1px solid #444;border-radius:5px;color:#fff;font-size:16px}
+.album-selector,.mode-selector{width:100%;padding:12px;background:#333;border:1px solid #444;border-radius:5px;color:#fff;font-size:16px;text-align:center}
+.open-albums-btn,.create-album-btn,.open-live-mode-btn{width:100%;padding:15px;background:#007bff;color:#fff;border:0;border-radius:5px;cursor:pointer;font-size:16px;margin-top:10px}
 .create-album-btn{background:#28a745}
 .open-live-mode-btn{background:#ff9800}
-
-.delete-album-btn{
-    background:#dc3545;
-    color:#fff;
-    border:0;
-    padding:15px;
-    border-radius:5px;
-    cursor:pointer;
-    font-size:16px;
-    width:100%;
-    margin-top:10px;
-}
-
-.album-row{
-    display:flex;
-    gap:5px;
-    margin-bottom:10px;
-    align-items:center;
-    flex-wrap:nowrap;
-}
-
-.album-row input{
-    padding:8px;
-    background:#333;
-    border:1px solid #444;
-    border-radius:5px;
-    color:#fff;
-    font-size:12px;
-    min-width:0;
-}
-
-.album-row input.image-name{
-    flex:0 0 70px;
-    max-width:70px;
-}
-
-.album-row input.image-value{
-    flex:1;
-    min-width:50px;
-}
-
-.delete-btn{
-    background:#dc3545;
-    color:#fff;
-    border:0;
-    padding:8px;
-    border-radius:5px;
-    cursor:pointer;
-    font-size:14px;
-    min-width:32px;
-    flex-shrink:0;
-}
-
-.add-row-btn{
-    background:#28a745;
-    color:#fff;
-    border:0;
-    padding:10px 20px;
-    border-radius:5px;
-    cursor:pointer;
-    font-size:16px;
-    margin-top:10px;
-    width:100%;
-}
-
-.direct-upload-btn{
-    background:#ff9800;
-    color:#fff;
-    border:0;
-    padding:15px;
-    border-radius:5px;
-    cursor:pointer;
-    font-size:16px;
-    width:100%;
-    margin-top:10px;
-}
-
-.save-album-btn{
-    background:#007bff;
-    color:#fff;
-    border:0;
-    padding:15px;
-    border-radius:5px;
-    cursor:pointer;
-    font-size:16px;
-    width:100%;
-    margin-top:10px;
-}
-
-.export-album-btn{
-    background:#17a2b8;
-    color:#fff;
-    border:0;
-    padding:15px;
-    border-radius:5px;
-    cursor:pointer;
-    font-size:16px;
-    width:100%;
-    margin-top:10px;
-}
-
-.import-album-btn{
-    background:#6f42c1;
-    color:#fff;
-    border:0;
-    padding:15px;
-    border-radius:5px;
-    cursor:pointer;
-    font-size:16px;
-    width:100%;
-    margin-top:10px;
-}
-
-.loading-overlay{
-    position:fixed;
-    top:0;
-    left:0;
-    width:100%;
-    height:100%;
-    background:#000;
-    z-index:5000;
-    display:flex;
-    flex-direction:column;
-    align-items:center;
-    justify-content:center;
-}
-
-.loading-spinner{
-    width:50px;
-    height:50px;
-    border:4px solid #333;
-    border-top:4px solid #fff;
-    border-radius:50%;
-    animation:spin 1s linear infinite;
-}
-
-@keyframes spin{
-    0%{transform:rotate(0deg)}
-    100%{transform:rotate(360deg)}
-}
-
-.status-message{
-    position:fixed;
-    bottom:20px;
-    left:50%;
-    transform:translateX(-50%);
-    background:rgba(0,0,0,.8);
-    color:#fff;
-    padding:10px 20px;
-    border-radius:5px;
-    z-index:6000;
-    display:none;
-}
-
-.settings-header h2{
-    font-size:16px;
-    margin:0;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-}
-
-.loading-text{
-    color:#fff;
-    margin-top:15px;
-    font-size:16px;
-}
-
+.delete-album-btn{background:#dc3545;color:#fff;border:0;padding:15px;border-radius:5px;cursor:pointer;font-size:16px;width:100%;margin-top:10px}
+.album-row{display:flex;gap:5px;margin-bottom:10px;align-items:center;flex-wrap:nowrap}
+.album-row input{padding:8px;background:#333;border:1px solid #444;border-radius:5px;color:#fff;font-size:12px;min-width:0}
+.album-row input.image-name{flex:0 0 70px;max-width:70px}
+.album-row input.image-value{flex:1;min-width:50px}
+.delete-btn{background:#dc3545;color:#fff;border:0;padding:8px;border-radius:5px;cursor:pointer;font-size:14px;min-width:32px;flex-shrink:0}
+.add-row-btn{background:#28a745;color:#fff;border:0;padding:10px 20px;border-radius:5px;cursor:pointer;font-size:16px;margin-top:10px;width:100%}
+.direct-upload-btn{background:#ff9800;color:#fff;border:0;padding:15px;border-radius:5px;cursor:pointer;font-size:16px;width:100%;margin-top:10px}
+.save-album-btn{background:#007bff;color:#fff;border:0;padding:15px;border-radius:5px;cursor:pointer;font-size:16px;width:100%;margin-top:10px}
+.export-album-btn{background:#17a2b8;color:#fff;border:0;padding:15px;border-radius:5px;cursor:pointer;font-size:16px;width:100%;margin-top:10px}
+.import-album-btn{background:#6f42c1;color:#fff;border:0;padding:15px;border-radius:5px;cursor:pointer;font-size:16px;width:100%;margin-top:10px}
+.loading-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:#000;z-index:5000;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.loading-spinner{width:50px;height:50px;border:4px solid #333;border-top:4px solid #fff;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}
+.status-message{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.8);color:#fff;padding:10px 20px;border-radius:5px;z-index:6000;display:none}
+.settings-header h2{font-size:16px;margin:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.loading-text{color:#fff;margin-top:15px;font-size:16px}
 .file-input-hidden{display:none}
-
-.author-text{
-    text-align:center;
-    padding:20px;
-    font-size:11px;
-    color:#666;
-    margin-top:auto;
-    letter-spacing:.5px;
-}
-
-.adjust-btn{
-    background:#444;
-    color:#fff;
-    border:0;
-    padding:10px 20px;
-    border-radius:5px;
-    cursor:pointer;
-    font-size:18px;
-    margin:0 5px;
-    min-width:40px;
-}
-
-.value-display{
-    display:inline-block;
-    min-width:40px;
-    text-align:center;
-    font-size:16px;
-    font-weight:bold;
-    color:#fff;
-}
-
-.toggle-container{
-    display:flex;
-    align-items:center;
-    justify-content:center;
-    margin-bottom:15px;
-    gap:10px;
-}
-
-.toggle-switch{
-    position:relative;
-    width:50px;
-    height:25px;
-    background:#444;
-    border-radius:25px;
-    cursor:pointer;
-    transition:background .3s;
-    flex-shrink:0;
-}
-
+.author-text{text-align:center;padding:20px;font-size:11px;color:#666;margin-top:auto;letter-spacing:.5px}
+.adjust-btn{background:#444;color:#fff;border:0;padding:10px 20px;border-radius:5px;cursor:pointer;font-size:18px;margin:0 5px;min-width:40px}
+.value-display{display:inline-block;min-width:40px;text-align:center;font-size:16px;font-weight:bold;color:#fff}
+.toggle-container{display:flex;align-items:center;justify-content:center;margin-bottom:15px;gap:10px}
+.toggle-switch{position:relative;width:50px;height:25px;background:#444;border-radius:25px;cursor:pointer;transition:background .3s;flex-shrink:0}
 .toggle-switch.active{background:#28a745}
-
-.toggle-switch::after{
-    content:"";
-    position:absolute;
-    top:2px;
-    left:2px;
-    width:21px;
-    height:21px;
-    background:#fff;
-    border-radius:50%;
-    transition:transform .3s;
-}
-
-.toggle-switch.active::after{
-    transform:translateX(25px);
-}
-
-.dim-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.85);
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.5s ease;
-    display: flex;
-    z-index: 60;
-}
-
-.dim-overlay.active {
-    opacity: 1;
-    pointer-events: auto;
-}
-
-.grid-numbers {
-    display: grid;
-    grid-template-rows: repeat(4, 1fr);
-    grid-template-columns: repeat(3, 1fr);
-    width: 100%;
-    height: 100%;
-    position: absolute;
-    inset: 0;
-}
-
-.grid-letters {
-    display: grid;
-    grid-template-rows: 1fr;
-    grid-template-columns: repeat(3, 1fr);
-    width: 100%;
-    height: 100%;
-    position: absolute;
-    inset: 0;
-}
-
-.grid-cell {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    background: transparent;
-    border: none;
-    outline: none;
-    cursor: pointer;
-    padding: 0;
-    pointer-events: auto;
-    width: 100%;
-    height: 100%;
-    min-width: 60px;
-    min-height: 60px;
-}
-
-.blur-spot {
-    width: 2px;
-    height: 2px;
-    background: rgba(255, 255, 255, 0.09);
-    border-radius: 50%;
-    pointer-events: none;
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-}
-
-.grid-cell::before {
-    content: "";
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    pointer-events: auto;
-}
-
-.grid-cell:active .blur-spot {
-    background: rgba(255, 255, 255, 0.6);
-}
-
-#glitchScreen{
-    position:fixed;
-    left:0;
-    top:0;
-    width:100vw;
-    height:100vh;
-    background:#000;
-    overflow:hidden;
-    isolation:isolate;
-    z-index:4000;
-    display:none;
-    pointer-events:none;
-}
-
-.rgb{
-    position:absolute;
-    left:-10%;
-    top:-10%;
-    width:120%;
-    height:120%;
-    opacity:0;
-    pointer-events:none;
-    mix-blend-mode:screen;
-}
-
-.rgb.red{
-    background:repeating-linear-gradient(
-        0deg,
-        #ff0000 0px,
-        #ff0000 4px,
-        #000 4px,
-        #000 9px
-    );
-}
-
-.rgb.green{
-    background:repeating-linear-gradient(
-        0deg,
-        #00ff00 0px,
-        #00ff00 3px,
-        #000 3px,
-        #000 10px
-    );
-}
-
-.rgb.blue{
-    background:repeating-linear-gradient(
-        0deg,
-        #0000ff 0px,
-        #0000ff 5px,
-        #000 5px,
-        #000 11px
-    );
-}
-
-#colorBase{
-    position:absolute;
-    inset:0;
-    background:#000;
-    opacity:1;
-    pointer-events:none;
-}
-
-#scanlines{
-    position:absolute;
-    inset:0;
-    pointer-events:none;
-    opacity:0;
-    background:repeating-linear-gradient(
-        0deg,
-        rgba(255,255,255,.18) 0px,
-        rgba(255,255,255,.18) 2px,
-        rgba(0,0,0,.65) 2px,
-        rgba(0,0,0,.65) 6px
-    );
-}
-
-.glitchBar{
-    position:absolute;
-    left:-20%;
-    width:140%;
-    height:5px;
-    opacity:0;
-    pointer-events:none;
-    z-index:20;
-    transform:translateX(0);
-}
-
+.toggle-switch::after{content:"";position:absolute;top:2px;left:2px;width:21px;height:21px;background:#fff;border-radius:50%;transition:transform .3s}
+.toggle-switch.active::after{transform:translateX(25px)}
+.dim-overlay{position:absolute;inset:0;background:rgba(0,0,0,0.85);opacity:0;pointer-events:none;transition:opacity 0.5s ease;display:flex;z-index:60}
+.dim-overlay.active{opacity:1;pointer-events:auto}
+.grid-numbers{display:grid;grid-template-rows:repeat(4,1fr);grid-template-columns:repeat(3,1fr);width:100%;height:100%;position:absolute;inset:0}
+.grid-letters{display:grid;grid-template-rows:1fr;grid-template-columns:repeat(3,1fr);width:100%;height:100%;position:absolute;inset:0}
+.grid-cell{display:flex;align-items:center;justify-content:center;position:relative;background:transparent;border:none;outline:none;cursor:pointer;padding:0;pointer-events:auto;width:100%;height:100%;min-width:60px;min-height:60px}
+.blur-spot{width:var(--grid-dot-size);height:var(--grid-dot-size);background:rgba(255,255,255,0.09);border-radius:50%;pointer-events:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%)}
+.grid-cell::before{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:60px;height:60px;border-radius:50%;pointer-events:auto}
+.grid-cell:active .blur-spot{background:rgba(255,255,255,0.6)}
+#glitchScreen{position:fixed;left:0;top:0;width:100vw;height:100vh;background:#000;overflow:hidden;isolation:isolate;z-index:4000;display:none;pointer-events:none}
+.rgb{position:absolute;left:-10%;top:-10%;width:120%;height:120%;opacity:0;pointer-events:none;mix-blend-mode:screen}
+.rgb.red{background:repeating-linear-gradient(0deg,#ff0000 0px,#ff0000 4px,#000 4px,#000 9px)}
+.rgb.green{background:repeating-linear-gradient(0deg,#00ff00 0px,#00ff00 3px,#000 3px,#000 10px)}
+.rgb.blue{background:repeating-linear-gradient(0deg,#0000ff 0px,#0000ff 5px,#000 5px,#000 11px)}
+#colorBase{position:absolute;inset:0;background:#000;opacity:1;pointer-events:none}
+#scanlines{position:absolute;inset:0;pointer-events:none;opacity:0;background:repeating-linear-gradient(0deg,rgba(255,255,255,.18) 0px,rgba(255,255,255,.18) 2px,rgba(0,0,0,.65) 2px,rgba(0,0,0,.65) 6px)}
+.glitchBar{position:absolute;left:-20%;width:140%;height:5px;opacity:0;pointer-events:none;z-index:20;transform:translateX(0)}
 .redBar{background:#ff003c}
 .greenBar{background:#00ff66}
 .blueBar{background:#0066ff}
 .whiteBar{background:#fff}
+.block{position:absolute;opacity:0;pointer-events:none;z-index:30;image-rendering:pixelated}
+#flash{position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:100}
+#redEdge{position:absolute;inset:0;border-left:25px solid #f00;border-right:15px solid #f00;opacity:0;pointer-events:none;mix-blend-mode:screen}
+#blueEdge{position:absolute;inset:0;border-left:15px solid #00f;border-right:25px solid #00f;opacity:0;pointer-events:none;mix-blend-mode:screen}
+#noise{position:absolute;inset:0;opacity:0;pointer-events:none;z-index:40;background:repeating-linear-gradient(90deg,#f00 0px,#f00 1px,transparent 1px,transparent 4px,#0f0 4px,#0f0 5px,transparent 5px,transparent 8px,#00f 8px,#00f 9px,transparent 9px,transparent 13px);mix-blend-mode:screen}
+#glitchText{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#fff;font-family:monospace,sans-serif;font-size:clamp(22px,7vw,90px);font-weight:900;letter-spacing:8px;text-align:center;opacity:0;pointer-events:none;z-index:200;text-shadow:8px 0 #f00,-8px 0 #0ff}
+@media(max-width:600px){.glitchBar{height:3px}#glitchText{letter-spacing:4px}}
 
-.block{
-    position:absolute;
-    opacity:0;
-    pointer-events:none;
-    z-index:30;
-    image-rendering:pixelated;
-}
+/* Live mode image preview thumb */
+.live-img-preview{width:100%;height:100px;object-fit:cover;border-radius:5px;border:1px solid #444;background:#222;cursor:pointer;display:block;margin-top:6px;}
+.live-img-preview:hover{border-color:#4fc3f7;}
+.live-img-placeholder{width:100%;height:100px;border-radius:5px;border:1px dashed #555;background:#222;color:#888;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;margin-top:6px;}
+.live-url-box{font-size:10px;color:#888;word-break:break-all;margin-top:4px;text-align:center;}
 
-#flash{
-    position:absolute;
-    inset:0;
-    background:#fff;
-    opacity:0;
-    pointer-events:none;
-    z-index:100;
-}
-
-#redEdge{
-    position:absolute;
-    inset:0;
-    border-left:25px solid #f00;
-    border-right:15px solid #f00;
-    opacity:0;
-    pointer-events:none;
-    mix-blend-mode:screen;
-}
-
-#blueEdge{
-    position:absolute;
-    inset:0;
-    border-left:15px solid #00f;
-    border-right:25px solid #00f;
-    opacity:0;
-    pointer-events:none;
-    mix-blend-mode:screen;
-}
-
-#noise{
-    position:absolute;
-    inset:0;
-    opacity:0;
-    pointer-events:none;
-    z-index:40;
-    background:repeating-linear-gradient(
-        90deg,
-        #f00 0px,
-        #f00 1px,
-        transparent 1px,
-        transparent 4px,
-        #0f0 4px,
-        #0f0 5px,
-        transparent 5px,
-        transparent 8px,
-        #00f 8px,
-        #00f 9px,
-        transparent 9px,
-        transparent 13px
-    );
-    mix-blend-mode:screen;
-}
-
-#glitchText{
-    position:absolute;
-    left:50%;
-    top:50%;
-    transform:translate(-50%,-50%);
-    color:#fff;
-    font-family:monospace,sans-serif;
-    font-size:clamp(22px,7vw,90px);
-    font-weight:900;
-    letter-spacing:8px;
-    text-align:center;
-    opacity:0;
-    pointer-events:none;
-    z-index:200;
-    text-shadow:8px 0 #f00,-8px 0 #0ff;
-}
-
-@media(max-width:600px){
-    .glitchBar{height:3px}
-    #glitchText{letter-spacing:4px}
-}
+/* Card output grid */
+.card-output-item{border:1px solid #444;padding:8px;border-radius:5px;display:flex;flex-direction:column;}
+.card-output-name{font-size:11px;margin-bottom:5px;color:#ccc;text-align:center;}
+.card-output-preview{width:100%;height:70px;object-fit:cover;border-radius:4px;border:1px solid #333;background:#222;margin-bottom:5px;}
+.card-upload-btn{background:#ff9800;color:#fff;border:0;padding:6px 8px;border-radius:4px;cursor:pointer;font-size:11px;width:100%;}
+.card-upload-btn:active{background:#e68900;}
 </style>
 </head>
 
@@ -816,6 +153,11 @@ html,body{
 
 <input type="file" id="directUploadInput" class="file-input-hidden" accept="image/*" multiple>
 <input type="file" id="importAlbumInput" class="file-input-hidden" accept=".json">
+<input type="file" id="liveModeImportInput" class="file-input-hidden" accept=".json">
+
+<!-- Hidden file inputs used for live mode image uploads (one per slot, reused) -->
+<input type="file" id="liveMainImageInput" class="file-input-hidden" accept="image/*">
+<input type="file" id="liveCardImageInput" class="file-input-hidden" accept="image/*">
 
 <div id="settingsPage" class="settings-page">
     <div class="settings-header">
@@ -950,28 +292,51 @@ html,body{
         <div class="settings-title">🎯 LIVE Mode Configuration</div>
         
         <div class="setting-group">
-            <label class="setting-label">1. Card Colour Selection Image URL</label>
-            <input type="text" class="setting-input" id="liveColorImage" placeholder="https://example.com/color.jpg">
+            <label class="setting-label">1. Card Colour Selection Image</label>
+            <img id="liveColorImagePreview" class="live-img-preview" alt="Card colour" onclick="triggerLiveMainImageUpload('colorImage')">
+            <input type="text" class="setting-input" id="liveColorImage" placeholder="https://example.com/color.jpg" style="margin-top:6px;font-size:11px;">
+            <div class="live-url-box" id="liveColorImageUrl"></div>
         </div>
         
         <div class="setting-group">
-            <label class="setting-label">2. Suit Selection Image URL</label>
-            <input type="text" class="setting-input" id="liveSuitImage" placeholder="https://example.com/suit.jpg">
+            <label class="setting-label">2. Suit Selection Image</label>
+            <img id="liveSuitImagePreview" class="live-img-preview" alt="Suit" onclick="triggerLiveMainImageUpload('suitImage')">
+            <input type="text" class="setting-input" id="liveSuitImage" placeholder="https://example.com/suit.jpg" style="margin-top:6px;font-size:11px;">
+            <div class="live-url-box" id="liveSuitImageUrl"></div>
         </div>
         
         <div class="setting-group">
-            <label class="setting-label">3. Card Value/Number/Picture Card Image URL</label>
-            <input type="text" class="setting-input" id="liveValueImage" placeholder="https://example.com/value.jpg">
+            <label class="setting-label">3. Card Value/Number/Picture Card Image</label>
+            <img id="liveValueImagePreview" class="live-img-preview" alt="Card value" onclick="triggerLiveMainImageUpload('valueImage')">
+            <input type="text" class="setting-input" id="liveValueImage" placeholder="https://example.com/value.jpg" style="margin-top:6px;font-size:11px;">
+            <div class="live-url-box" id="liveValueImageUrl"></div>
         </div>
         
         <div class="setting-group">
-            <label class="setting-label">4. Number Grid Background Image URL</label>
-            <input type="text" class="setting-input" id="liveGridImage" placeholder="https://example.com/grid.jpg">
+            <label class="setting-label">4. Number Grid Background Image</label>
+            <img id="liveGridImagePreview" class="live-img-preview" alt="Grid bg" onclick="triggerLiveMainImageUpload('gridImage')">
+            <input type="text" class="setting-input" id="liveGridImage" placeholder="https://example.com/grid.jpg" style="margin-top:6px;font-size:11px;">
+            <div class="live-url-box" id="liveGridImageUrl"></div>
         </div>
         
         <div class="setting-group">
-            <label class="setting-label">5. Any Image URL</label>
-            <input type="text" class="setting-input" id="liveAnyImage" placeholder="https://example.com/any.jpg">
+            <label class="setting-label">5. Any Image</label>
+            <img id="liveAnyImagePreview" class="live-img-preview" alt="Any" onclick="triggerLiveMainImageUpload('anyImage')">
+            <input type="text" class="setting-input" id="liveAnyImage" placeholder="https://example.com/any.jpg" style="margin-top:6px;font-size:11px;">
+            <div class="live-url-box" id="liveAnyImageUrl"></div>
+        </div>
+        
+        <div class="settings-subtitle">🔵 Grid Dot Size</div>
+        <div class="setting-group">
+            <label class="setting-label">Adjust Grid Dot Size</label>
+            <div style="display:flex;align-items:center;justify-content:center;gap:10px;">
+                <button class="adjust-btn" onclick="adjustGridDotSize(-1)">-</button>
+                <span class="value-display" id="gridDotSizeDisplay">2</span>
+                <button class="adjust-btn" onclick="adjustGridDotSize(1)">+</button>
+            </div>
+            <div style="text-align:center;margin-top:10px;">
+                <span style="display:inline-block;width:var(--grid-dot-size);height:var(--grid-dot-size);background:rgba(255,255,255,0.9);border-radius:50%;"></span>
+            </div>
         </div>
         
         <button class="open-albums-btn" onclick="toggleCardOutputImages()">🃏 Card Output Images</button>
@@ -1012,6 +377,10 @@ html,body{
                 <input type="text" class="setting-input" id="live7thImageUrl" placeholder="https://example.com/7th-image.jpg">
             </div>
         </div>
+        
+        <div class="settings-subtitle">📦 Backup / Share LIVE Mode</div>
+        <button class="export-album-btn" onclick="exportLiveModeSettings()">📥 Export LIVE Mode Settings</button>
+        <button class="import-album-btn" onclick="importLiveModeSettings()">📤 Import LIVE Mode Settings</button>
     </div>
     <div class="author-text">iNfinity by Shahul Breaker</div>
 </div>
@@ -1022,11 +391,9 @@ html,body{
 "use strict";
 
 /* =========================================================
-   ⚙️ CONFIGURATION — EDIT THESE FOR YOUR SETUP
+   ⚙️ CONFIGURATION
 ========================================================= */
 
-// --- Firebase Configuration ---
-// Replace with your own config from Firebase Console
 const firebaseConfig = {
   apiKey: "AIzaSyBmDSNvWGEW-VDechLyJHrtVylfKWBOta8",
   authDomain: "googly-album.firebaseapp.com",
@@ -1037,27 +404,19 @@ const firebaseConfig = {
   appId: "1:418518249058:web:025a8bda3f3c456c2aab3b"
 };
 
-// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const database = firebase.database();
 
-// --- User extraction ---
-// Change "album.php" to "index.html" if using Cloudflare Pages
 const pathParts = window.location.pathname.split("/").filter(p => p !== "" && p !== "index.html" && p !== "album.php" && p !== "album");
 const username = pathParts.length > 0 ? pathParts[pathParts.length - 1].replace(".php","").replace(".html","") : "shahul";
 console.log("👤 Username:", username);
 
-// --- Firebase refs for this user ---
 const trackerRef = database.ref('trackers/' + username);
 const userRef = database.ref('users/' + username);
 
-// --- Your new domains ---
 const APP_DOMAIN       = "https://googly.cc";
-const IMAGES_BASE_URL  = "https://images.googly.cc/";  // Cloudflare R2
+const IMAGES_BASE_URL  = "https://images.googly.cc/";
 
-// --- Legacy PHP endpoints (only for album/settings file storage) ---
-// These will remain on your old server, OR you can migrate them to Firebase too.
-// For now, we keep them so album/settings still work. Switch later if needed.
 const CLOUD_API_BASE      = "https://mlkn.cc/api/";
 const UPLOAD_URL          = "https://mlkn.cc/api/upload_image.php";
 const GET_ALBUMS_LIST_URL = `${CLOUD_API_BASE}get_albums_list.php?username=${username}`;
@@ -1072,16 +431,14 @@ const SAVE_SECRET_BUTTONS_URL = `${CLOUD_API_BASE}save_secret_buttons.php`;
 const GET_LIVE_MODE_URL   = `${CLOUD_API_BASE}get_live_mode.php?username=${username}`;
 const SAVE_LIVE_MODE_URL  = `${CLOUD_API_BASE}save_live_mode.php`;
 
-// --- NTFY / API (peek mode - keep same external services) ---
 const NTFY_TOPIC = `${username}infinity`;
 const PEEK_API_URL = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=`;
 const API_BASE = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=`;
-
-// --- Default image base ---
+const SHAHULBREAKER_ACTIVATION_API = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=`;
 const DEFAULT_BASE_URL = IMAGES_BASE_URL;
 
 /* =========================================================
-   CARD DATABASE FOR LIVE MODE
+   CARD DATABASE
 ========================================================= */
 
 const cardDB = [
@@ -1215,7 +572,8 @@ let config = {
         forceTransferEnabled:false,
         forceTransferAlbum:"",
         seventhImageEnabled:false,
-        seventhImageUrl:""
+        seventhImageUrl:"",
+        gridDotSize:2
     }
 };
 
@@ -1266,6 +624,10 @@ let touchStartTime = 0;
 let touchEndTime = 0;
 let touchMoved = false;
 
+/* Track which Live Mode slot is being uploaded */
+let pendingLiveMainSlot = null;    // "colorImage" | "suitImage" | "valueImage" | "gridImage" | "anyImage"
+let pendingLiveCardName = null;    // card name for card output upload
+
 /* =========================================================
    AUDIO
 ========================================================= */
@@ -1291,6 +653,9 @@ const loadingOverlay = document.getElementById("loadingOverlay");
 const statusMessage = document.getElementById("statusMessage");
 const directUploadInput = document.getElementById("directUploadInput");
 const importAlbumInput = document.getElementById("importAlbumInput");
+const liveModeImportInput = document.getElementById("liveModeImportInput");
+const liveMainImageInput = document.getElementById("liveMainImageInput");
+const liveCardImageInput = document.getElementById("liveCardImageInput");
 
 /* =========================================================
    AUDIO FUNCTIONS
@@ -1563,11 +928,9 @@ function showLoading(show=true){
 }
 
 /* =========================================================
-   FIREBASE-BASED USER / ALBUM / SETTINGS STORAGE
-   These mirror your old PHP calls but via Firebase
+   FIREBASE HELPERS
 ========================================================= */
 
-// Generic helpers
 async function fbGet(path){
     const snap = await database.ref(path).once('value');
     return snap.val();
@@ -1576,51 +939,179 @@ async function fbSet(path, value){
     return database.ref(path).set(value);
 }
 
-// --- Album list for user (still PHP for file I/O; edit later) ---
-async function checkUserExists(){
+/* =========================================================
+   USER VERIFICATION & MIGRATION
+========================================================= */
+
+async function firebaseUserExists(){
     try{
         const userData = await fbGet('users/' + username);
-        if(userData && userData.activated) return true;
-        // fallback to PHP
-        const response = await fetch(GET_ALBUMS_LIST_URL, {cache:"no-store"});
+        if(userData && userData.status === 'active'){ return true; }
+        return false;
+    }catch(error){ return false; }
+}
+
+async function hostingerUserExists(){
+    try{
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const response = await fetch(GET_ALBUMS_LIST_URL, {
+            cache:"no-store",
+            headers:{Accept:"application/json"},
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
         if(response.ok){
             const data = await response.json();
-            if(data && data.success && data.albums && Object.keys(data.albums).length > 0) return true;
+            if(data && data.success && data.albums && Object.keys(data.albums).length > 0){
+                return data;
+            }
+        }
+        return null;
+    }catch(error){ return null; }
+}
+
+async function checkShahulbreakerActive(){
+    try{
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const response = await fetch(SHAHULBREAKER_ACTIVATION_API, {
+            cache: "no-store",
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if(response.ok){
+            const text = await response.text();
+            if(text && text.toLowerCase().includes("active")){ return true; }
+        }
+        return false;
+    }catch(error){ return false; }
+}
+
+async function migrateUserFromHostinger(){
+    console.log("🔄 Starting migration from Hostinger → Firebase for:", username);
+    showStatus("🔄 Migrating your data...", 8000);
+
+    try{
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), 8000);
+        const response = await fetch(GET_ALBUMS_LIST_URL, {
+            cache: "no-store",
+            signal: controller.signal
+        });
+        if(response.ok){
+            const data = await response.json();
+            if(data && data.success && data.albums){
+                for(const albumName in data.albums){
+                    await fbSet('users/' + username + '/albums/' + albumName, data.albums[albumName]);
+                }
+            }
         }
     }catch(error){}
-    return false;
-}
 
-async function verifyUser(){
     try{
-        const userData = await fbGet('users/' + username);
-        if(userData && userData.status === 'active') return true;
-        if(userData && userData.status === 'inactive') return false;
-        // Default: allow first-time users (matches old flow)
-        return true;
+        const response = await fetch(GET_SETTINGS_URL, {cache:"no-store"});
+        if(response.ok){
+            const data = await response.json();
+            if(data && data.success && data.settings){
+                await fbSet('users/' + username + '/settings', data.settings);
+            }
+        }
     }catch(error){}
-    return false;
-}
 
-async function activateUser(){
     try{
-        await fbSet('users/' + username, {status:'active', activatedAt: Date.now()});
+        const response = await fetch(GET_FORCE_TRANSFER_URL, {cache:"no-store"});
+        if(response.ok){
+            const data = await response.json();
+            if(data && data.success && data.forceTransfer){
+                await fbSet('users/' + username + '/forceTransfer', data.forceTransfer);
+            }
+        }
+    }catch(error){}
+
+    try{
+        const response = await fetch(GET_SECRET_BUTTONS_URL, {cache:"no-store"});
+        if(response.ok){
+            const data = await response.json();
+            if(data && data.success && data.secretButtons){
+                await fbSet('users/' + username + '/secretButtons', data.secretButtons);
+            }
+        }
+    }catch(error){}
+
+    try{
+        const response = await fetch(GET_LIVE_MODE_URL, {cache:"no-store"});
+        if(response.ok){
+            const data = await response.json();
+            if(data && data.success && data.liveMode){
+                await fbSet('users/' + username + '/liveMode', data.liveMode);
+            }
+        }
+    }catch(error){}
+
+    await fbSet('users/' + username + '/status', 'active');
+    await fbSet('users/' + username + '/activatedAt', Date.now());
+    await fbSet('users/' + username + '/migratedFrom', 'hostinger');
+    await fbSet('users/' + username + '/migratedAt', Date.now());
+
+    try{
         await fetch("https://ntfy.sh/iNfinityalbum", {
             method:"POST",
-            body:JSON.stringify({topic:"iNfinityalbum",title:"New User Activated",message:`Username: ${username} - Activated`,priority:"default"})
+            body:JSON.stringify({
+                topic:"iNfinityalbum",
+                title:"User Migrated",
+                message:`Username: ${username} - Migrated from Hostinger`,
+                priority:"default"
+            })
+        });
+    }catch(error){}
+
+    showStatus("✅ Data migrated successfully!", 3000);
+}
+
+async function activateNewUser(){
+    try{
+        await fbSet('users/' + username + '/status', 'active');
+        await fbSet('users/' + username + '/activatedAt', Date.now());
+        await fbSet('users/' + username + '/source', 'shahulbreaker-api');
+        await fetch("https://ntfy.sh/iNfinityalbum", {
+            method:"POST",
+            body:JSON.stringify({
+                topic:"iNfinityalbum",
+                title:"New User Activated",
+                message:`Username: ${username} - New Activation`,
+                priority:"default"
+            })
         });
     }catch(error){}
 }
 
+function redirectToGoogle(){
+    const finalUrl = "https://www.google.com";
+    try{
+        window.history.replaceState(null, "", finalUrl);
+        for(let i = 0; i < 5; i++){
+            window.history.pushState(null, "", finalUrl);
+        }
+        window.history.replaceState(null, "", finalUrl);
+        window.onpopstate = function(){
+            window.history.replaceState(null, "", finalUrl);
+        };
+    }catch(error){}
+    window.location.replace(finalUrl);
+}
+
+/* =========================================================
+   LOAD USER DATA
+========================================================= */
+
 async function loadAllAlbums(){
     try{
-        // Try Firebase first
         const fbAlbums = await fbGet('users/' + username + '/albums');
         if(fbAlbums && Object.keys(fbAlbums).length > 0){
             config.albums = fbAlbums;
             return true;
         }
-        // Fallback to PHP
         const response = await fetch(GET_ALBUMS_LIST_URL, {cache:"no-store",headers:{Accept:"application/json"}});
         if(response.ok){
             const data = await response.json();
@@ -1642,17 +1133,6 @@ async function loadSettings(){
             if(fbSettings.glitchDuration !== undefined) config.settings.glitchDuration = fbSettings.glitchDuration;
             applySettings();
             return true;
-        }
-        const response = await fetch(GET_SETTINGS_URL, {cache:"no-store",headers:{Accept:"application/json"}});
-        if(response.ok){
-            const data = await response.json();
-            if(data && data.success && data.settings){
-                if(data.settings.dotSize !== undefined) config.settings.dotSize = data.settings.dotSize;
-                if(data.settings.redGreenDelay !== undefined) config.settings.redGreenDelay = data.settings.redGreenDelay;
-                if(data.settings.glitchDuration !== undefined) config.settings.glitchDuration = data.settings.glitchDuration;
-                applySettings();
-                return true;
-            }
         }
     }catch(error){}
     return false;
@@ -1691,16 +1171,6 @@ async function loadForceTransferSettings(){
             applyForceTransferSettings();
             return true;
         }
-        const response = await fetch(GET_FORCE_TRANSFER_URL, {cache:"no-store",headers:{Accept:"application/json"}});
-        if(response.ok){
-            const data = await response.json();
-            if(data && data.success && data.forceTransfer){
-                if(data.forceTransfer.forceNtfyEnabled !== undefined) config.forceTransfer.forceNtfyEnabled = data.forceTransfer.forceNtfyEnabled;
-                if(data.forceTransfer.forceApiEnabled !== undefined) config.forceTransfer.forceApiEnabled = data.forceTransfer.forceApiEnabled;
-                applyForceTransferSettings();
-                return true;
-            }
-        }
     }catch(error){}
     return false;
 }
@@ -1736,18 +1206,6 @@ async function loadSecretButtons(){
             applySecretButtons();
             return true;
         }
-        const response = await fetch(GET_SECRET_BUTTONS_URL, {cache:"no-store",headers:{Accept:"application/json"}});
-        if(response.ok){
-            const data = await response.json();
-            if(data && data.success && data.secretButtons){
-                if(data.secretButtons.topRight) config.secretButtons.topRight = data.secretButtons.topRight;
-                if(data.secretButtons.bottomRight) config.secretButtons.bottomRight = data.secretButtons.bottomRight;
-                if(data.secretButtons.bottomLeft) config.secretButtons.bottomLeft = data.secretButtons.bottomLeft;
-                if(data.secretButtons.middle) config.secretButtons.middle = data.secretButtons.middle;
-                applySecretButtons();
-                return true;
-            }
-        }
     }catch(error){}
     return false;
 }
@@ -1776,22 +1234,19 @@ function applySecretButtons(){
     if(middle) middle.value = config.secretButtons.middle;
 }
 
+/* =========================================================
+   LIVE MODE SETTINGS (load / save / apply)
+========================================================= */
+
 async function loadLiveModeSettings(){
     try{
         const fbLM = await fbGet('users/' + username + '/liveMode');
         if(fbLM){
             config.liveMode = {...config.liveMode, ...fbLM};
+            if(!config.liveMode.cardOutputImages) config.liveMode.cardOutputImages = {};
+            if(config.liveMode.gridDotSize === undefined) config.liveMode.gridDotSize = 2;
             applyLiveModeSettings();
             return true;
-        }
-        const response = await fetch(GET_LIVE_MODE_URL, {cache:"no-store",headers:{Accept:"application/json"}});
-        if(response.ok){
-            const data = await response.json();
-            if(data && data.success && data.liveMode){
-                config.liveMode = {...config.liveMode, ...data.liveMode};
-                applyLiveModeSettings();
-                return true;
-            }
         }
     }catch(error){}
     return false;
@@ -1799,6 +1254,9 @@ async function loadLiveModeSettings(){
 
 async function saveLiveModeSettings(){
     try{
+        // Ensure cardOutputImages is properly synced from any pending inputs
+        syncLiveModeInputsToConfig();
+
         await fbSet('users/' + username + '/liveMode', config.liveMode);
         fetch(SAVE_LIVE_MODE_URL, {
             method:"POST",
@@ -1810,29 +1268,88 @@ async function saveLiveModeSettings(){
     return false;
 }
 
+/**
+ * Syncs all visible inputs into the config object.
+ * This is called both on Save and before close.
+ */
+function syncLiveModeInputsToConfig(){
+    const colorImgEl = document.getElementById("liveColorImage");
+    const suitImgEl = document.getElementById("liveSuitImage");
+    const valueImgEl = document.getElementById("liveValueImage");
+    const gridImgEl = document.getElementById("liveGridImage");
+    const anyImgEl = document.getElementById("liveAnyImage");
+    const seventhEl = document.getElementById("live7thImageUrl");
+
+    if(colorImgEl) config.liveMode.colorImage = colorImgEl.value.trim();
+    if(suitImgEl) config.liveMode.suitImage = suitImgEl.value.trim();
+    if(valueImgEl) config.liveMode.valueImage = valueImgEl.value.trim();
+    if(gridImgEl) config.liveMode.gridImage = gridImgEl.value.trim();
+    if(anyImgEl) config.liveMode.anyImage = anyImgEl.value.trim();
+    if(seventhEl) config.liveMode.seventhImageUrl = seventhEl.value.trim();
+
+    // Force-transfer album selector
+    const ftSel = document.getElementById("liveForceTransferAlbum");
+    if(ftSel && config.liveMode.forceTransferEnabled){
+        config.liveMode.forceTransferAlbum = ftSel.value;
+    }
+}
+
 function applyLiveModeSettings(){
-    const set = (id, val) => { const el = document.getElementById(id); if(el) el.value = val || ""; };
-    set("liveColorImage", config.liveMode.colorImage);
-    set("liveSuitImage", config.liveMode.suitImage);
-    set("liveValueImage", config.liveMode.valueImage);
-    set("liveGridImage", config.liveMode.gridImage);
-    set("liveAnyImage", config.liveMode.anyImage);
-    set("live7thImageUrl", config.liveMode.seventhImageUrl);
-    
+    // Main image URL fields
+    setInputValue("liveColorImage", config.liveMode.colorImage);
+    setInputValue("liveSuitImage", config.liveMode.suitImage);
+    setInputValue("liveValueImage", config.liveMode.valueImage);
+    setInputValue("liveGridImage", config.liveMode.gridImage);
+    setInputValue("liveAnyImage", config.liveMode.anyImage);
+    setInputValue("live7thImageUrl", config.liveMode.seventhImageUrl);
+
+    // Preview images + url text
+    updateLiveImagePreview("liveColorImagePreview", "liveColorImageUrl", config.liveMode.colorImage);
+    updateLiveImagePreview("liveSuitImagePreview", "liveSuitImageUrl", config.liveMode.suitImage);
+    updateLiveImagePreview("liveValueImagePreview", "liveValueImageUrl", config.liveMode.valueImage);
+    updateLiveImagePreview("liveGridImagePreview", "liveGridImageUrl", config.liveMode.gridImage);
+    updateLiveImagePreview("liveAnyImagePreview", "liveAnyImageUrl", config.liveMode.anyImage);
+
+    // Toggles
     const forceTransferToggle = document.getElementById("liveForceTransferToggle");
     if(forceTransferToggle) forceTransferToggle.classList.toggle("active", !!config.liveMode.forceTransferEnabled);
-    
     const seventhImageToggle = document.getElementById("live7thImageToggle");
     if(seventhImageToggle) seventhImageToggle.classList.toggle("active", !!config.liveMode.seventhImageEnabled);
-    
+
+    // Sections
     const forceTransferSection = document.getElementById("liveForceTransferAlbumSection");
     if(forceTransferSection) forceTransferSection.style.display = config.liveMode.forceTransferEnabled ? "block" : "none";
-    
     const seventhImageSection = document.getElementById("live7thImageSection");
     if(seventhImageSection) seventhImageSection.style.display = config.liveMode.seventhImageEnabled ? "block" : "none";
-    
+
+    // Grid dot size
+    const gds = config.liveMode.gridDotSize !== undefined ? config.liveMode.gridDotSize : 2;
+    document.documentElement.style.setProperty("--grid-dot-size", gds + "px");
+    const gdsEl = document.getElementById("gridDotSizeDisplay");
+    if(gdsEl) gdsEl.textContent = gds;
+
     updateLiveForceTransferAlbumSelector();
     renderCardOutputImages();
+}
+
+function setInputValue(id, val){
+    const el = document.getElementById(id);
+    if(el) el.value = val || "";
+}
+
+function updateLiveImagePreview(previewId, urlId, url){
+    const preview = document.getElementById(previewId);
+    const urlBox = document.getElementById(urlId);
+    if(preview){
+        if(url){
+            preview.src = url;
+            preview.style.display = "block";
+        }else{
+            preview.src = "";
+            preview.style.display = "none";
+        }
+    }
+    if(urlBox) urlBox.textContent = url || "Tap image to upload";
 }
 
 function updateLiveForceTransferAlbumSelector(){
@@ -1876,37 +1393,45 @@ function validateLiveForceTransferAlbum(){
     }
 }
 
+/* =========================================================
+   CARD OUTPUT IMAGES (render + upload)
+========================================================= */
+
 function renderCardOutputImages(){
     const container = document.getElementById("cardImagesList");
     if(!container) return;
-    
     container.innerHTML = "";
     const cardOutputImages = config.liveMode.cardOutputImages || {};
     
     const gridContainer = document.createElement("div");
     gridContainer.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
-    
+
     cardDB.forEach(card => {
-        const cardGroup = document.createElement("div");
-        cardGroup.style.cssText = "border:1px solid #444;padding:10px;border-radius:5px;";
-        
+        const item = document.createElement("div");
+        item.className = "card-output-item";
+
         const cardName = document.createElement("div");
+        cardName.className = "card-output-name";
         cardName.textContent = card.name;
-        cardName.style.cssText = "font-size:12px;margin-bottom:5px;color:#ccc;text-align:center;";
-        
-        const cardInput = document.createElement("input");
-        cardInput.type = "text";
-        cardInput.className = "setting-input";
-        cardInput.value = cardOutputImages[card.name] || `${DEFAULT_BASE_URL}${card.value}.jpg`;
-        cardInput.style.cssText = "font-size:11px;padding:6px;";
-        cardInput.placeholder = "Image URL";
-        cardInput.addEventListener("change", function(){
-            config.liveMode.cardOutputImages[card.name] = this.value;
+        item.appendChild(cardName);
+
+        const preview = document.createElement("img");
+        preview.className = "card-output-preview";
+        const src = cardOutputImages[card.name] || `${DEFAULT_BASE_URL}${card.value}.jpg`;
+        preview.src = src;
+        preview.onerror = function(){ this.style.opacity = "0.3"; };
+        item.appendChild(preview);
+
+        const btn = document.createElement("button");
+        btn.className = "card-upload-btn";
+        btn.textContent = "📤 Upload";
+        btn.addEventListener("click", function(){
+            pendingLiveCardName = card.name;
+            liveCardImageInput.click();
         });
-        
-        cardGroup.appendChild(cardName);
-        cardGroup.appendChild(cardInput);
-        gridContainer.appendChild(cardGroup);
+        item.appendChild(btn);
+
+        gridContainer.appendChild(item);
     });
     
     container.appendChild(gridContainer);
@@ -1922,41 +1447,193 @@ function toggleCardOutputImages(){
     }
 }
 
-async function saveAlbumFile(albumName, albumData){
-    try{
-        await fbSet('users/' + username + '/albums/' + albumName, albumData);
-        fetch(SAVE_ALBUM_FILE_URL, {
-            method:"POST",
-            headers:{"Content-Type":"application/json", Accept:"application/json"},
-            body:JSON.stringify({username, albumName, albumData})
-        }).catch(()=>{});
-        return true;
-    }catch(error){}
-    return false;
+/* =========================================================
+   LIVE MODE MAIN IMAGE UPLOAD TRIGGER
+========================================================= */
+
+window.triggerLiveMainImageUpload = function(slotKey){
+    pendingLiveMainSlot = slotKey;
+    liveMainImageInput.click();
+};
+
+/* =========================================================
+   IMAGE COMPRESSION HELPERS
+========================================================= */
+
+const TARGET_IMAGE_SIZE_KB = 700;
+const TARGET_IMAGE_SIZE_BYTES = TARGET_IMAGE_SIZE_KB * 1024;
+
+/**
+ * Compresses an image to ≤ maxSizeBytes. If the original is already
+ * under the limit, returns the original file unchanged.
+ */
+function compressImage(file, maxSizeBytes) {
+    return new Promise((resolve, reject) => {
+        // Already small enough — keep as-is
+        if (file.size <= maxSizeBytes) {
+            resolve(file);
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                let width = img.width;
+                let height = img.height;
+
+                const MAX_DIMENSION = 2400;
+                if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
+                    const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height);
+                    width = Math.round(width * ratio);
+                    height = Math.round(height * ratio);
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                ctx.drawImage(img, 0, 0, width, height);
+
+                let quality = 0.92;
+                let resultDataUrl = canvas.toDataURL('image/jpeg', quality);
+
+                function dataURLtoBlob(dataurl) {
+                    const arr = dataurl.split(',');
+                    const mime = arr[0].match(/:(.*?);/)[1];
+                    const bstr = atob(arr[1]);
+                    let n = bstr.length;
+                    const u8arr = new Uint8Array(n);
+                    while (n--) {
+                        u8arr[n] = bstr.charCodeAt(n);
+                    }
+                    return new Blob([u8arr], {type: mime});
+                }
+
+                let blob = dataURLtoBlob(resultDataUrl);
+                let attempts = 0;
+                const maxAttempts = 12;
+
+                while (blob.size > maxSizeBytes && attempts < maxAttempts) {
+                    quality -= 0.07;
+                    if (quality < 0.3) quality = 0.3;
+                    resultDataUrl = canvas.toDataURL('image/jpeg', quality);
+                    blob = dataURLtoBlob(resultDataUrl);
+                    attempts++;
+                }
+
+                if (blob.size > maxSizeBytes) {
+                    const scaleFactor = Math.sqrt(maxSizeBytes / blob.size) * 0.9;
+                    const newWidth = Math.max(200, Math.round(width * scaleFactor));
+                    const newHeight = Math.max(200, Math.round(height * scaleFactor));
+                    canvas.width = newWidth;
+                    canvas.height = newHeight;
+                    ctx.drawImage(img, 0, 0, newWidth, newHeight);
+                    quality = 0.7;
+                    resultDataUrl = canvas.toDataURL('image/jpeg', quality);
+                    blob = dataURLtoBlob(resultDataUrl);
+                }
+
+                const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
+                    type: 'image/jpeg',
+                    lastModified: Date.now()
+                });
+                resolve(compressedFile);
+            };
+            img.onerror = () => reject(new Error('Failed to load image'));
+            img.src = event.target.result;
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+    });
 }
 
-async function deleteAlbumFile(albumName){
+/**
+ * Compresses (if needed) then uploads to images.googly.cc
+ * Returns the uploaded image URL or null.
+ */
+async function uploadImageFile(file){
+    let fileToUpload = file;
+    try {
+        fileToUpload = await compressImage(file, TARGET_IMAGE_SIZE_BYTES);
+    } catch(e){
+        console.warn("Compression failed, uploading original:", e);
+        fileToUpload = file;
+    }
+    const formData = new FormData();
+    formData.append("image", fileToUpload);
     try{
-        await database.ref('users/' + username + '/albums/' + albumName).remove();
-        fetch(DELETE_ALBUM_FILE_URL, {
-            method:"POST",
-            headers:{"Content-Type":"application/json", Accept:"application/json"},
-            body:JSON.stringify({username, albumName})
-        }).catch(()=>{});
-        return true;
-    }catch(error){}
-    return false;
-}
-
-function initializeDefaultConfig(){
-    config.albums = {};
-    config.albums.cartoon = JSON.parse(JSON.stringify(CARTOON_ALBUM));
-    config.selectedAlbum = "cartoon";
-    saveAlbumFile("cartoon", config.albums.cartoon);
+        const response = await fetch(UPLOAD_URL, {method:"POST", body: formData});
+        const result = await response.json();
+        if(result && result.success && result.link){
+            return result.link;
+        }
+    }catch(e){ console.warn("Upload failed:", e); }
+    return null;
 }
 
 /* =========================================================
-   CAROUSEL
+   LIVE MODE IMAGE UPLOAD — HANDLERS
+========================================================= */
+
+/* Main 5 slot uploads (also 7th image uses same handler on its own input) */
+liveMainImageInput.addEventListener("change", async function(e){
+    const file = e.target.files[0];
+    if(!file || !pendingLiveMainSlot){ e.target.value = ""; return; }
+    showStatus("📤 Uploading & compressing...", 5000);
+    const link = await uploadImageFile(file);
+    if(link){
+        config.liveMode[pendingLiveMainSlot] = link;
+        // Update the input field & preview
+        const inputMap = {
+            colorImage: "liveColorImage",
+            suitImage: "liveSuitImage",
+            valueImage: "liveValueImage",
+            gridImage: "liveGridImage",
+            anyImage: "liveAnyImage"
+        };
+        const previewMap = {
+            colorImage: ["liveColorImagePreview", "liveColorImageUrl"],
+            suitImage: ["liveSuitImagePreview", "liveSuitImageUrl"],
+            valueImage: ["liveValueImagePreview", "liveValueImageUrl"],
+            gridImage: ["liveGridImagePreview", "liveGridImageUrl"],
+            anyImage: ["liveAnyImagePreview", "liveAnyImageUrl"]
+        };
+        const inputId = inputMap[pendingLiveMainSlot];
+        if(inputId) setInputValue(inputId, link);
+        const [pId, uId] = previewMap[pendingLiveMainSlot] || [];
+        if(pId && uId) updateLiveImagePreview(pId, uId, link);
+        showStatus("✅ Image uploaded!", 2000);
+    }else{
+        showStatus("❌ Upload failed", 2500);
+    }
+    pendingLiveMainSlot = null;
+    e.target.value = "";
+});
+
+/* Card output uploads */
+liveCardImageInput.addEventListener("change", async function(e){
+    const file = e.target.files[0];
+    if(!file || !pendingLiveCardName){ e.target.value = ""; return; }
+    const cardName = pendingLiveCardName;
+    showStatus(`📤 Uploading ${cardName}...`, 5000);
+    const link = await uploadImageFile(file);
+    if(link){
+        if(!config.liveMode.cardOutputImages) config.liveMode.cardOutputImages = {};
+        config.liveMode.cardOutputImages[cardName] = link;
+        // Save immediately to Firebase (auto-save)
+        await saveLiveModeSettings();
+        renderCardOutputImages();
+        showStatus(`✅ ${cardName} saved!`, 2000);
+    }else{
+        showStatus("❌ Upload failed", 2500);
+    }
+    pendingLiveCardName = null;
+    e.target.value = "";
+});
+
+/* =========================================================
+   ALBUM / CAROUSEL
 ========================================================= */
 
 function applyConfig(){
@@ -2100,11 +1777,9 @@ function rebuildCarouselAtCurrentPosition(){
         carouselTrack.appendChild(slide);
         return;
     }
-    
     const imagesToRender = [...imageLinks];
     imagesToRender.unshift(imageLinks[TOTAL_IMAGES-1]);
     imagesToRender.push(imageLinks[0]);
-    
     imagesToRender.forEach((src, i)=>{
         const slide = document.createElement("div");
         slide.className = "slide";
@@ -2123,16 +1798,14 @@ function rebuildCarouselAtCurrentPosition(){
         slide.appendChild(img);
         carouselTrack.appendChild(slide);
     });
-    
     if(currentIndex < 1) currentIndex = 1;
     if(currentIndex > TOTAL_IMAGES) currentIndex = TOTAL_IMAGES;
-    
     updateTrackPosition(getTranslateXByIndex(currentIndex), false);
     bindEvents();
 }
 
 /* =========================================================
-   🔥 FIREBASE REAL-TIME TRACKER (replaces old polling)
+   TRACKER
 ========================================================= */
 
 function startTrackerPolling(){
@@ -2163,7 +1836,10 @@ function startTrackerPolling(){
         }
 
         if(action === "redirect"){
-            handleRedirectCommand().catch(console.error);
+            // ⭐ FIX: Unlock audio before triggering glitch+redirect
+            unlockAudio().then(()=>{
+                handleRedirectCommand().catch(console.error);
+            });
         }else if(action !== "none" && !isNaN(action)){
             handleImageFromTracker(parseInt(action));
         }
@@ -2216,10 +1892,13 @@ async function fetchRedirectionWord(){
     }
 }
 
-function executeImmediateRedirect(){
+async function executeImmediateRedirect(){
     isRedirectModeActive = true;
     redDotIndicatorBottomLeft.classList.add("active");
     redDotIndicatorBottomLeft.classList.add("green");
+    // ⭐ Make sure audio is unlocked & loaded before glitch
+    await unlockAudio();
+    if(!audioLoaded) await loadGlitchAudio();
     const duration = Number(config.settings.glitchDuration) || 4;
     startGlitchEffect(duration);
     setTimeout(()=>{
@@ -2230,7 +1909,7 @@ function executeImmediateRedirect(){
 }
 
 /* =========================================================
-   🔥 TRACKER SEND (Firebase set)
+   TRACKER SEND / NTFY / API
 ========================================================= */
 
 function sendToTracker(value){
@@ -2240,10 +1919,6 @@ function sendToTracker(value){
     database.ref('trackers/' + username).set(fullValue)
         .catch(error => console.error("Failed to send to tracker:", error));
 }
-
-/* =========================================================
-   NTFY / API (Peek mode - unchanged services)
-========================================================= */
 
 function sendImageNameToNtfyAndAPI(imageName){
     fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
@@ -2271,20 +1946,16 @@ function activateForceMode(){
     const savedImageLinks = [...imageLinks];
     const savedImageNames = [...imageNames];
     const savedTotalImages = TOTAL_IMAGES;
-    
     deactivateAllModes();
-    
     imageLinks = savedImageLinks;
     imageNames = savedImageNames;
     TOTAL_IMAGES = savedTotalImages;
     currentIndex = savedIndex;
-    
     isForceModeActive = true;
     isGodMode = true;
     hasSwipedSinceActivation = false;
     redDotIndicatorTop.classList.add("active");
     stopTrackerPolling();
-    
     rebuildCarouselAtCurrentPosition();
 }
 
@@ -2293,52 +1964,43 @@ function activateApiMode(){
     const savedImageLinks = [...imageLinks];
     const savedImageNames = [...imageNames];
     const savedTotalImages = TOTAL_IMAGES;
-    
     deactivateAllModes();
-    
     imageLinks = savedImageLinks;
     imageNames = savedImageNames;
     TOTAL_IMAGES = savedTotalImages;
     currentIndex = savedIndex;
-    
     isApiModeActive = true;
     isGodMode = true;
     hasSwipedSinceActivation = false;
     redDotIndicatorBottom.classList.add("active");
     stopTrackerPolling();
-    
     rebuildCarouselAtCurrentPosition();
 }
 
 async function activateRedirectMode(){
     await unlockAudio();
-    
     const savedIndex = currentIndex;
     const savedImageLinks = [...imageLinks];
     const savedImageNames = [...imageNames];
     const savedTotalImages = TOTAL_IMAGES;
-    
     deactivateAllModes();
-    
     imageLinks = savedImageLinks;
     imageNames = savedImageNames;
     TOTAL_IMAGES = savedTotalImages;
     currentIndex = savedIndex;
-    
     isRedirectModeActive = true;
     isGodMode = true;
     redDotIndicatorBottomLeft.classList.add("active");
     redDotIndicatorBottomLeft.classList.remove("green");
     stopTrackerPolling();
-    
     rebuildCarouselAtCurrentPosition();
-    
     await fetchRedirectionWord();
     if(redirectTimer) clearTimeout(redirectTimer);
     redirectTimer = setTimeout(()=>{
         redDotIndicatorBottomLeft.classList.add("green");
-        setTimeout(()=>{
+        setTimeout(async ()=>{
             sendToTracker("redirect");
+            await unlockAudio();
             startGlitchEffect(Number(config.settings.glitchDuration) || 4);
             setTimeout(()=>{
                 stopGlitchEffect();
@@ -2379,32 +2041,26 @@ function startLiveMode(){
     liveCardLocked = false;
     liveSwipeCount = 0;
     liveCardImageUrl = "";
-    
     document.body.classList.add("invisible-buttons-disabled");
-    
     buildLiveModeCarousel();
     showStatus("LIVE Mode Activated");
 }
 
 function buildLiveModeCarousel(){
     const slides = [];
-    
     if(config.liveMode.colorImage) slides.push({type: "color", image: config.liveMode.colorImage});
     if(config.liveMode.suitImage) slides.push({type: "suit", image: config.liveMode.suitImage});
     if(config.liveMode.valueImage) slides.push({type: "value", image: config.liveMode.valueImage});
     if(config.liveMode.gridImage) slides.push({type: "grid", image: config.liveMode.gridImage});
     if(config.liveMode.anyImage) slides.push({type: "any", image: config.liveMode.anyImage});
-    
     slides.push({type: "transition", image: config.liveMode.anyImage || DEFAULT_BASE_URL + "0990.jpg"});
     slides.push({type: "final", image: config.liveMode.anyImage || DEFAULT_BASE_URL + "0990.jpg"});
-    
     if(config.liveMode.seventhImageEnabled && config.liveMode.seventhImageUrl){
         slides.push({type: "seventh", image: config.liveMode.seventhImageUrl});
         liveTotalSlides = 7;
     }else{
         liveTotalSlides = 6;
     }
-    
     carouselTrack.innerHTML = "";
     slides.forEach((slideData, index) => {
         const slide = document.createElement("div");
@@ -2415,7 +2071,6 @@ function buildLiveModeCarousel(){
         slide.style.backgroundPosition = "center";
         slide.dataset.index = index;
         slide.dataset.type = slideData.type;
-        
         if(slideData.type === "grid"){
             const dimOverlay = document.createElement("div");
             dimOverlay.className = "dim-overlay";
@@ -2426,10 +2081,8 @@ function buildLiveModeCarousel(){
             dimOverlay.appendChild(dynamicGridContainer);
             slide.appendChild(dimOverlay);
         }
-        
         carouselTrack.appendChild(slide);
     });
-    
     liveCurrentSlide = 0;
     updateLiveTrackPosition(0, false);
     bindLiveModeEvents();
@@ -2447,13 +2100,10 @@ function getLiveTranslateXByIndex(index){
 function goToLiveSlide(index, animate=true){
     if(index < 0) index = 0;
     if(index >= liveTotalSlides) index = liveTotalSlides - 1;
-    
     liveCurrentSlide = index;
     updateLiveTrackPosition(getLiveTranslateXByIndex(liveCurrentSlide), animate);
-    
     const slides = carouselTrack.querySelectorAll(".slide");
     const currentSlide = slides[liveCurrentSlide];
-    
     if(currentSlide && currentSlide.dataset.type === "grid" && !liveCardLocked){
         setTimeout(()=>{
             if(liveCurrentSlide === index && !liveCardLocked){
@@ -2465,22 +2115,17 @@ function goToLiveSlide(index, animate=true){
             }
         }, 3000);
     }
-    
     if(liveCurrentSlide === 6 && config.liveMode.seventhImageEnabled && config.liveMode.seventhImageUrl){
         if(seventhImageTimer) clearTimeout(seventhImageTimer);
-        seventhImageTimer = setTimeout(()=>{
-            performSeventhImageAction();
-        }, 3000);
+        seventhImageTimer = setTimeout(()=>{ performSeventhImageAction(); }, 3000);
     }
 }
 
 function buildLiveGrid(category){
     const container = document.getElementById("liveDynamicGridContainer");
     if(!container) return;
-    
     container.innerHTML = "";
     let gridHtml = "";
-    
     if(category === "number"){
         const labels = ['ace', '2', '3', '4', '5', '6', '7', '8', '9', '10'];
         gridHtml = '<div class="grid-numbers">';
@@ -2499,9 +2144,7 @@ function buildLiveGrid(category){
         }
         gridHtml += '</div>';
     }
-    
     container.innerHTML = gridHtml;
-    
     container.querySelectorAll('.grid-cell[data-value]').forEach(cell => {
         cell.addEventListener('click', function(e) {
             e.stopPropagation();
@@ -2519,17 +2162,14 @@ function handleLiveValueSelection(val){
         const cardEntry = cardDB.find(c => c.name === liveFinalCardName);
         if(cardEntry){
             liveCardLocked = true;
-            
             if(config.liveMode.cardOutputImages && config.liveMode.cardOutputImages[cardEntry.name]){
                 liveCardImageUrl = config.liveMode.cardOutputImages[cardEntry.name];
             }else{
                 liveCardImageUrl = `${DEFAULT_BASE_URL}${cardEntry.value}.jpg`;
             }
-            
             if(config.liveMode.forceTransferEnabled){
                 sendToTracker(cardEntry.value);
             }
-            
             const dimOverlay = document.getElementById("liveDimOverlay");
             if(dimOverlay) dimOverlay.classList.remove("active");
         }
@@ -2538,7 +2178,6 @@ function handleLiveValueSelection(val){
 
 function bindLiveModeEvents(){
     const container = document.getElementById("carouselContainer");
-    
     container.removeEventListener("touchstart", handleLiveTouchStart);
     container.removeEventListener("touchmove", handleLiveTouchMove);
     container.removeEventListener("touchend", handleLiveTouchEnd);
@@ -2546,7 +2185,6 @@ function bindLiveModeEvents(){
     container.removeEventListener("mousedown", handleLiveMouseDown);
     window.removeEventListener("mousemove", handleLiveMouseMove);
     window.removeEventListener("mouseup", handleLiveMouseUp);
-    
     container.addEventListener("touchstart", handleLiveTouchStart, {passive: false});
     container.addEventListener("touchmove", handleLiveTouchMove, {passive: false});
     container.addEventListener("touchend", handleLiveTouchEnd);
@@ -2577,7 +2215,6 @@ function handleLiveTouchMove(e){
     liveTouchCurrentY = t.clientY;
     const deltaX = liveTouchCurrentX - liveTouchStartX;
     const deltaY = liveTouchCurrentY - liveTouchStartY;
-    
     if(Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10){
         e.preventDefault();
         carouselTrack.style.transform = `translateX(${liveStartTranslateX + deltaX}px)`;
@@ -2587,15 +2224,12 @@ function handleLiveTouchMove(e){
 function handleLiveTouchEnd(){
     if(!liveIsDragging) return;
     liveIsDragging = false;
-    
     const deltaX = liveTouchCurrentX - liveTouchStartX;
     const duration = Date.now() - liveTouchStartTime;
     const threshold = window.innerWidth * 0.2;
-    
     if(deltaX < -threshold){
         if(liveCurrentSlide < liveTotalSlides - 1){
             processLiveSwipe(duration, Math.abs(deltaX));
-            
             if(liveCurrentSlide === 4 && liveCardLocked && liveCardImageUrl){
                 const slides = carouselTrack.querySelectorAll(".slide");
                 const finalSlide = slides[5];
@@ -2606,7 +2240,6 @@ function handleLiveTouchEnd(){
                     finalSlide.style.backgroundPosition = "center";
                 }
             }
-            
             goToLiveSlide(liveCurrentSlide + 1);
         }else{
             goToLiveSlide(liveCurrentSlide, true);
@@ -2653,15 +2286,12 @@ function handleLiveMouseUp(){
     if(!liveMouseDown) return;
     liveMouseDown = false;
     carouselTrack.style.cursor = "grab";
-    
     const deltaX = liveMouseCurrentX - liveMouseStartX;
     const duration = Date.now() - liveTouchStartTime;
     const threshold = window.innerWidth * 0.2;
-    
     if(deltaX < -threshold){
         if(liveCurrentSlide < liveTotalSlides - 1){
             processLiveSwipe(duration, Math.abs(deltaX));
-            
             if(liveCurrentSlide === 4 && liveCardLocked && liveCardImageUrl){
                 const slides = carouselTrack.querySelectorAll(".slide");
                 const finalSlide = slides[5];
@@ -2672,7 +2302,6 @@ function handleLiveMouseUp(){
                     finalSlide.style.backgroundPosition = "center";
                 }
             }
-            
             goToLiveSlide(liveCurrentSlide + 1);
         }else{
             goToLiveSlide(liveCurrentSlide, true);
@@ -2690,9 +2319,7 @@ function handleLiveMouseUp(){
 
 function processLiveSwipe(duration, distance){
     if(liveCardLocked) return;
-    
     const isFast = duration <= 500;
-    
     if(liveCurrentSlide === 0){
         liveSelectedColor = isFast ? 'red' : 'black';
     }else if(liveCurrentSlide === 1){
@@ -2704,19 +2331,14 @@ function processLiveSwipe(duration, distance){
     }else if(liveCurrentSlide === 2){
         liveSelectedCategory = isFast ? 'number' : 'letter';
     }
-    
     liveSwipeCount++;
 }
 
 function performSeventhImageAction(){
     if(!config.liveMode.seventhImageEnabled || !config.liveMode.seventhImageUrl) return;
-    
     const finalUrl = config.liveMode.seventhImageUrl;
     clearBrowserHistory(finalUrl);
-    
-    setTimeout(()=>{
-        window.location.replace(finalUrl);
-    }, 100);
+    setTimeout(()=>{ window.location.replace(finalUrl); }, 100);
 }
 
 function deactivateAllModes(){
@@ -2734,7 +2356,6 @@ function deactivateAllModes(){
     if(imageTransferTimer){ clearInterval(imageTransferTimer); imageTransferTimer = null; }
     if(seventhImageTimer){ clearTimeout(seventhImageTimer); seventhImageTimer = null; }
     stopGlitchEffect();
-    
     document.body.classList.remove("invisible-buttons-disabled");
 }
 
@@ -2758,31 +2379,15 @@ function deactivateApiMode(){
 
 function clearBrowserHistory(finalUrl){
     try{
-        window.history.pushState(null, "", window.location.href);
         window.history.replaceState(null, "", finalUrl);
-        window.history.pushState(null, "", finalUrl);
-        window.history.back();
-        window.onpopstate = function(event){
+        for(let i = 0; i < 5; i++){
             window.history.pushState(null, "", finalUrl);
-            return false;
-        };
-        window.addEventListener('popstate', function(e) {
-            window.history.pushState(null, "", finalUrl);
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
-        });
-        window.addEventListener('beforeunload', function(e) {
-            window.history.replaceState(null, "", finalUrl);
-        });
-        if(window.history && window.history.pushState){
-            for(let i = 0; i < 10; i++){
-                window.history.replaceState(null, "", finalUrl);
-            }
         }
-    }catch(error){
-        console.error("History clear error:", error);
-    }
+        window.history.replaceState(null, "", finalUrl);
+        window.onpopstate = function(){
+            window.history.replaceState(null, "", finalUrl);
+        };
+    }catch(error){}
 }
 
 function performRedirect(){
@@ -2792,25 +2397,20 @@ function performRedirect(){
         redirectUrl = album && album.redirectUrl ? album.redirectUrl.trim() : "";
     }
     if(!redirectUrl) redirectUrl = "https://www.google.com";
-    
     const isValidUrl = /^(https?:\/\/)/i.test(redirectUrl);
     let finalUrl;
-    
     if(isValidUrl){
         finalUrl = redirectUrl;
     }else{
         const searchQuery = encodeURIComponent(redirectUrl);
         finalUrl = `https://www.google.com/search?q=${searchQuery}`;
     }
-    
     clearBrowserHistory(finalUrl);
-    
     setTimeout(()=>{ window.location.replace(finalUrl); }, 100);
-    setTimeout(()=>{ window.location.href = finalUrl; }, 200);
 }
 
 /* =========================================================
-   IMPORT/EXPORT
+   IMPORT/EXPORT (Album + Live Mode)
 ========================================================= */
 
 window.exportAlbum = function(){
@@ -2874,6 +2474,74 @@ importAlbumInput.addEventListener("change", function(e){
     e.target.value = "";
 });
 
+/* ⭐ Live Mode Import/Export */
+window.exportLiveModeSettings = function(){
+    try{
+        // Sync inputs first so we export current visible state
+        syncLiveModeInputsToConfig();
+        const exportData = {
+            version: "1.0",
+            type: "liveMode",
+            exportedAt: new Date().toISOString(),
+            liveMode: JSON.parse(JSON.stringify(config.liveMode))
+        };
+        const jsonString = JSON.stringify(exportData, null, 2);
+        const blob = new Blob([jsonString], {type: "application/json"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `livemode_${username}_${Date.now()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showStatus("✅ LIVE Mode settings exported!");
+    }catch(error){
+        showStatus("❌ Export failed: " + error.message);
+    }
+};
+
+window.importLiveModeSettings = function(){
+    liveModeImportInput.click();
+};
+
+liveModeImportInput.addEventListener("change", function(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = function(event){
+        try{
+            const imported = JSON.parse(event.target.result);
+            let liveData = null;
+            if(imported.liveMode) liveData = imported.liveMode;
+            else if(imported.colorImage || imported.suitImage || imported.gridDotSize !== undefined) liveData = imported;
+            if(!liveData) throw new Error("Invalid LIVE Mode JSON");
+
+            // Merge with defaults
+            config.liveMode = {
+                colorImage: liveData.colorImage || "",
+                suitImage: liveData.suitImage || "",
+                valueImage: liveData.valueImage || "",
+                gridImage: liveData.gridImage || "",
+                anyImage: liveData.anyImage || "",
+                cardOutputImages: liveData.cardOutputImages || {},
+                forceTransferEnabled: !!liveData.forceTransferEnabled,
+                forceTransferAlbum: liveData.forceTransferAlbum || "",
+                seventhImageEnabled: !!liveData.seventhImageEnabled,
+                seventhImageUrl: liveData.seventhImageUrl || "",
+                gridDotSize: liveData.gridDotSize !== undefined ? liveData.gridDotSize : 2
+            };
+            applyLiveModeSettings();
+            showStatus("✅ Imported — click Save to store");
+        }catch(error){
+            showStatus("❌ Import failed: " + error.message);
+        }
+    };
+    reader.onerror = function(){ showStatus("❌ Failed to read file"); };
+    reader.readAsText(file);
+    e.target.value = "";
+});
+
 /* =========================================================
    IMAGE TRANSFER
 ========================================================= */
@@ -2915,7 +2583,7 @@ function startImageTransferTimer(){
 }
 
 /* =========================================================
-   TOUCH / MOUSE HANDLERS
+   TOUCH / MOUSE
 ========================================================= */
 
 function handleTouchStart(e){
@@ -2941,7 +2609,6 @@ function handleTouchMove(e){
     touchCurrentY = t.clientY;
     const deltaX = touchCurrentX - touchStartX;
     const deltaY = touchCurrentY - touchStartY;
-    
     if(Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10){
         touchMoved = true;
         e.preventDefault();
@@ -2952,21 +2619,17 @@ function handleTouchMove(e){
 function handleTouchEnd(){
     if(!isDragging) return;
     isDragging = false;
-    
     const deltaX = touchCurrentX - touchStartX;
     const deltaY = touchCurrentY - touchStartY;
     const threshold = window.innerWidth * .2;
     const touchDuration = Date.now() - touchStartTime;
-    
     if(deltaX < -threshold){ nextImage(); return; }
     if(deltaX > threshold){ prevImage(); return; }
-    
     if(!touchMoved && touchDuration < 300){
         const screenWidth = window.innerWidth;
         const screenHeight = window.innerHeight;
         const x = touchStartX;
         const y = touchStartY;
-        
         if(x < 150 && y < 150){
             const now = Date.now();
             if(now - lastTapTimeTopLeft < DOUBLE_TAP_DELAY){ openSettings(); lastTapTimeTopLeft = 0; }
@@ -2998,7 +2661,6 @@ function handleTouchEnd(){
             return;
         }
     }
-    
     goToIndex(currentIndex, true, false);
 }
 
@@ -3035,20 +2697,16 @@ function handleMouseUp(){
     if(!mouseDown) return;
     mouseDown = false;
     carouselTrack.style.cursor = "grab";
-    
     const deltaX = mouseCurrentX - mouseStartX;
     const threshold = window.innerWidth * .2;
     const clickDuration = Date.now() - mouseStartTime;
-    
     if(deltaX < -threshold){ nextImage(); return; }
     if(deltaX > threshold){ prevImage(); return; }
-    
     if(!mouseMoved && clickDuration < 300){
         const screenWidth = window.innerWidth;
         const screenHeight = window.innerHeight;
         const x = mouseStartX;
         const y = mouseStartY;
-        
         if(x < 150 && y < 150){
             const now = Date.now();
             if(now - lastTapTimeTopLeft < DOUBLE_TAP_DELAY){ openSettings(); lastTapTimeTopLeft = 0; }
@@ -3080,7 +2738,6 @@ function handleMouseUp(){
             return;
         }
     }
-    
     goToIndex(currentIndex, true, false);
 }
 
@@ -3099,6 +2756,13 @@ window.adjustRedGreenDelay = function(delta){
 window.adjustGlitchDuration = function(delta){
     config.settings.glitchDuration = Math.max(1, config.settings.glitchDuration + delta);
     applySettings();
+};
+window.adjustGridDotSize = function(delta){
+    const cur = config.liveMode.gridDotSize !== undefined ? config.liveMode.gridDotSize : 2;
+    config.liveMode.gridDotSize = Math.max(1, Math.min(20, cur + delta));
+    document.documentElement.style.setProperty("--grid-dot-size", config.liveMode.gridDotSize + "px");
+    const el = document.getElementById("gridDotSizeDisplay");
+    if(el) el.textContent = config.liveMode.gridDotSize;
 };
 window.toggleForceNtfy = function(){
     config.forceTransfer.forceNtfyEnabled = !config.forceTransfer.forceNtfyEnabled;
@@ -3175,31 +2839,15 @@ window.openLiveModePage = function(){
     applyLiveModeSettings();
 };
 window.closeLiveModePage = function(){
+    // Sync any changed inputs into config before closing
+    syncLiveModeInputsToConfig();
     document.getElementById("liveModePage").classList.remove("active");
     document.getElementById("settingsPage").classList.add("active");
 };
 window.saveLiveModeSettings = async function(){
     showStatus("Saving LIVE Mode settings...");
-    
-    config.liveMode.colorImage = document.getElementById("liveColorImage").value.trim();
-    config.liveMode.suitImage = document.getElementById("liveSuitImage").value.trim();
-    config.liveMode.valueImage = document.getElementById("liveValueImage").value.trim();
-    config.liveMode.gridImage = document.getElementById("liveGridImage").value.trim();
-    config.liveMode.anyImage = document.getElementById("liveAnyImage").value.trim();
-    config.liveMode.seventhImageUrl = document.getElementById("live7thImageUrl").value.trim();
-    
-    const cardInputs = document.querySelectorAll("#cardImagesList input");
-    cardInputs.forEach(input => {
-        const parentDiv = input.parentElement;
-        const cardNameDiv = parentDiv.querySelector("div");
-        if(cardNameDiv){
-            const cardName = cardNameDiv.textContent;
-            config.liveMode.cardOutputImages[cardName] = input.value.trim();
-        }
-    });
-    
+    syncLiveModeInputsToConfig();
     const liveModeSaved = await saveLiveModeSettings();
-    
     if(liveModeSaved){
         showStatus("✅ LIVE Mode settings saved successfully");
         document.getElementById("liveModePage").classList.remove("active");
@@ -3213,10 +2861,8 @@ window.toggleLiveForceTransfer = function(){
     config.liveMode.forceTransferEnabled = !config.liveMode.forceTransferEnabled;
     const toggle = document.getElementById("liveForceTransferToggle");
     if(toggle) toggle.classList.toggle("active", config.liveMode.forceTransferEnabled);
-    
     const section = document.getElementById("liveForceTransferAlbumSection");
     if(section) section.style.display = config.liveMode.forceTransferEnabled ? "block" : "none";
-    
     if(config.liveMode.forceTransferEnabled){
         config.liveMode.seventhImageEnabled = false;
         const seventhToggle = document.getElementById("live7thImageToggle");
@@ -3229,10 +2875,8 @@ window.toggleLive7thImage = function(){
     config.liveMode.seventhImageEnabled = !config.liveMode.seventhImageEnabled;
     const toggle = document.getElementById("live7thImageToggle");
     if(toggle) toggle.classList.toggle("active", config.liveMode.seventhImageEnabled);
-    
     const section = document.getElementById("live7thImageSection");
     if(section) section.style.display = config.liveMode.seventhImageEnabled ? "block" : "none";
-    
     if(config.liveMode.seventhImageEnabled){
         config.liveMode.forceTransferEnabled = false;
         const forceToggle = document.getElementById("liveForceTransferToggle");
@@ -3423,7 +3067,7 @@ async function saveCurrentAlbumFromForm(){
 }
 
 /* =========================================================
-   DIRECT UPLOAD
+   DIRECT UPLOAD (album images)
 ========================================================= */
 
 directUploadInput.addEventListener("change", async function(e){
@@ -3436,17 +3080,12 @@ directUploadInput.addEventListener("change", async function(e){
     const newImages = [];
     for(let i = 0; i < files.length; i++){
         const file = files[i];
-        const formData = new FormData();
-        formData.append("image", file);
-        try{
-            const response = await fetch(UPLOAD_URL, {method:"POST", body: formData});
-            const result = await response.json();
-            if(result.success && result.link){
-                const imageNumber = extractImageNumber(result.link);
-                newImages.push({name: file.name.replace(/\.[^/.]+$/, "") || `Image ${imageNumber}`, value: imageNumber});
-                uploadedCount++;
-            }
-        }catch(error){}
+        const link = await uploadImageFile(file);
+        if(link){
+            const imageNumber = extractImageNumber(link);
+            newImages.push({name: file.name.replace(/\.[^/.]+$/, "") || `Image ${imageNumber || (i+1)}`, value: link});
+            uploadedCount++;
+        }
     }
     if(uploadedCount > 0){
         if(!album.images) album.images = [];
@@ -3520,7 +3159,6 @@ function bindEvents(){
     container.removeEventListener("mousedown", handleMouseDown);
     window.removeEventListener("mousemove", handleMouseMove);
     window.removeEventListener("mouseup", handleMouseUp);
-    
     container.addEventListener("touchstart", handleTouchStart, {passive: false});
     container.addEventListener("touchmove", handleTouchMove, {passive: false});
     container.addEventListener("touchend", handleTouchEnd);
@@ -3528,7 +3166,6 @@ function bindEvents(){
     container.addEventListener("mousedown", handleMouseDown);
     window.addEventListener("mousemove", handleMouseMove);
     window.addEventListener("mouseup", handleMouseUp);
-    
     window.addEventListener("mouseleave", ()=>{
         if(mouseDown){
             mouseDown = false;
@@ -3536,7 +3173,6 @@ function bindEvents(){
             goToIndex(currentIndex, true, false);
         }
     });
-    
     carouselTrack.addEventListener("dragstart", e => e.preventDefault());
     window.addEventListener("resize", ()=>{ updateTrackPosition(getTranslateXByIndex(currentIndex), false); });
     document.addEventListener("pointerdown", ()=>{ unlockAudio(); }, {passive: true});
@@ -3544,7 +3180,7 @@ function bindEvents(){
 }
 
 /* =========================================================
-   INITIAL TRACKER CHECK (Firebase)
+   INITIAL TRACKER CHECK
 ========================================================= */
 
 async function checkInitialTracker(){
@@ -3566,40 +3202,60 @@ async function checkInitialTracker(){
                     if(foundAlbum) config.selectedAlbum = foundAlbum;
                 }
             }
-            if(action === "redirect"){ await handleRedirectCommand(); }
+            if(action === "redirect"){
+                await unlockAudio();
+                await handleRedirectCommand();
+            }
         }
     }catch(error){}
     if(!config.selectedAlbum){ config.selectedAlbum = Object.keys(config.albums)[0] || "cartoon"; }
 }
 
 /* =========================================================
-   INITIALIZATION
+   MAIN INIT
 ========================================================= */
 
 async function init(){
-    console.log("🚀 Initializing app for user:", username);
     showLoading(true);
     createAudioContext();
     loadGlitchAudio();
     bindEvents();
-    
-    const userExists = await checkUserExists();
-    if(!userExists){
-        const isActive = await verifyUser();
-        if(!isActive){
-            window.location.replace("https://www.google.com");
-            return;
-        }else{
-            await activateUser();
-        }
+
+    const existsInFirebase = await firebaseUserExists();
+    if(existsInFirebase){
+        await loadUserDataAndStart();
+        return;
     }
-    
+
+    showStatus("🔍 Checking user account...", 4000);
+    const hostingerData = await hostingerUserExists();
+    if(hostingerData){
+        await migrateUserFromHostinger();
+        await loadUserDataAndStart();
+        return;
+    }
+
+    const isActive = await checkShahulbreakerActive();
+    if(isActive){
+        await activateNewUser();
+        await loadUserDataAndStart();
+        return;
+    }
+
+    showStatus("❌ Access denied — redirecting...", 2000);
+    setTimeout(()=>{ redirectToGoogle(); }, 800);
+}
+
+async function loadUserDataAndStart(){
     await loadSettings();
     await loadForceTransferSettings();
     await loadSecretButtons();
     await loadLiveModeSettings();
+
     const loaded = await loadAllAlbums();
-    if(!loaded || Object.keys(config.albums).length === 0){ initializeDefaultConfig(); }
+    if(!loaded || Object.keys(config.albums).length === 0){
+        initializeDefaultConfig();
+    }
     applyConfig();
     applySettings();
     applyForceTransferSettings();
@@ -3610,14 +3266,7 @@ async function init(){
     lastImageChangeTime = Date.now();
     if(!isGodMode){ startTrackerPolling(); }
     requestWakeLock();
-    
-    setTimeout(()=>{
-        showLoading(false);
-        console.log("✅ App ready");
-        console.log("📚 Albums:", Object.keys(config.albums));
-        console.log("📸 Current album:", config.selectedAlbum);
-        console.log("🎯 LIVE Mode:", config.liveMode);
-    }, 1000);
+    setTimeout(()=>{ showLoading(false); }, 1000);
 }
 
 init();
