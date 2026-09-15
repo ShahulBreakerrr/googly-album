@@ -42,39 +42,9 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:no
 .setting-group{margin-bottom:20px}
 .setting-label{display:block;margin-bottom:8px;font-size:14px;color:#ccc;text-align:center}
 .setting-input{width:100%;padding:12px;background:#333;border:1px solid #444;border-radius:5px;color:#fff;font-size:16px;text-align:center}
-
-/* ⭐ CENTERED dropdowns — works on desktop, Android, iOS */
-.album-selector,.mode-selector{
-    width:100%;
-    padding:12px 40px 12px 15px;
-    background:#333;
-    border:1px solid #444;
-    border-radius:5px;
-    color:#fff;
-    font-size:16px;
-    text-align:center;
-    text-align-last:center;
-    -moz-text-align-last:center;
-    -webkit-appearance:none;
-    -moz-appearance:none;
-    appearance:none;
-    background-image:url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
-    background-repeat:no-repeat;
-    background-position:right 12px center;
-    background-size:16px;
-}
-.album-selector option,.mode-selector option{
-    text-align:center;
-    text-align-last:center;
-    -moz-text-align-last:center;
-    background:#333;
-    color:#fff;
-    padding:8px;
-}
-
-/* ⭐ Live mode URL inputs centered */
+.album-selector,.mode-selector{width:100%;padding:12px 40px 12px 15px;background:#333;border:1px solid #444;border-radius:5px;color:#fff;font-size:16px;text-align:center;text-align-last:center;-moz-text-align-last:center;-webkit-appearance:none;-moz-appearance:none;appearance:none;background-image:url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");background-repeat:no-repeat;background-position:right 12px center;background-size:16px}
+.album-selector option,.mode-selector option{text-align:center;text-align-last:center;-moz-text-align-last:center;background:#333;color:#fff;padding:8px}
 .live-mode-url-input{text-align:center !important;}
-
 .open-albums-btn,.create-album-btn,.open-live-mode-btn{width:100%;padding:15px;background:#007bff;color:#fff;border:0;border-radius:5px;cursor:pointer;font-size:16px;margin-top:10px}
 .create-album-btn{background:#28a745}
 .open-live-mode-btn{background:#ff9800}
@@ -131,11 +101,9 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:no
 #noise{position:absolute;inset:0;opacity:0;pointer-events:none;z-index:40;background:repeating-linear-gradient(90deg,#f00 0px,#f00 1px,transparent 1px,transparent 4px,#0f0 4px,#0f0 5px,transparent 5px,transparent 8px,#00f 8px,#00f 9px,transparent 9px,transparent 13px);mix-blend-mode:screen}
 #glitchText{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);color:#fff;font-family:monospace,sans-serif;font-size:clamp(22px,7vw,90px);font-weight:900;letter-spacing:8px;text-align:center;opacity:0;pointer-events:none;z-index:200;text-shadow:8px 0 #f00,-8px 0 #0ff}
 @media(max-width:600px){.glitchBar{height:3px}#glitchText{letter-spacing:4px}}
-
 .live-img-preview{width:100%;height:100px;object-fit:cover;border-radius:5px;border:1px solid #444;background:#222;cursor:pointer;display:block;margin-top:6px;}
 .live-img-preview:hover{border-color:#4fc3f7;}
 .live-url-box{font-size:10px;color:#888;word-break:break-all;margin-top:4px;text-align:center;}
-
 .card-output-item{border:1px solid #444;padding:8px;border-radius:5px;display:flex;flex-direction:column;}
 .card-output-name{font-size:11px;margin-bottom:5px;color:#ccc;text-align:center;}
 .card-output-preview{width:100%;height:70px;object-fit:cover;border-radius:4px;border:1px solid #333;background:#222;margin-bottom:5px;}
@@ -446,14 +414,10 @@ const userRef = database.ref('users/' + username);
 const APP_DOMAIN       = "https://googly.cc";
 const IMAGES_BASE_URL  = "https://images.googly.cc/";
 
-/* =========================================================
-   ⭐ R2 DIRECT UPLOAD CONFIGURATION
-   ⚠️ CHANGE THESE to match your Cloudflare Worker + R2
-   ========================================================= */
-const R2_UPLOAD_URL = "https://upload.googly.cc/upload";   // ⚠️ Your Worker endpoint
-const R2_PUBLIC_URL = IMAGES_BASE_URL;                      // Public read base for R2
+/* ⭐ R2 direct upload via Cloudflare Worker */
+const R2_UPLOAD_URL = "https://upload.googly.cc/";
+const R2_PUBLIC_URL = IMAGES_BASE_URL;
 
-/* ⭐ Legacy Hostinger endpoints — ONLY used once per user for migration on first login */
 const LEGACY_GET_ALBUMS_LIST_URL = `https://mlkn.cc/api/get_albums_list.php?username=${username}`;
 const LEGACY_GET_SETTINGS_URL    = `https://mlkn.cc/api/get_settings.php?username=${username}`;
 const LEGACY_GET_FORCE_TRANSFER_URL = `https://mlkn.cc/api/get_force_transfer.php?username=${username}`;
@@ -531,6 +495,7 @@ const cardDB = [
 
 let imageLinks = [];
 let imageNames = [];
+let imageTrackerNumbers = [];   // ⭐ NEW: parallel array of tracker numbers
 let TOTAL_IMAGES = 0;
 let currentIndex = 0;
 
@@ -541,34 +506,34 @@ const CARTOON_ALBUM = {
     apiUrl:"",
     jsonField:"",
     images:[
-        {name:"Daffy Duck",value:"0282"},{name:"Bambi",value:"0283"},{name:"Baloo",value:"0284"},
-        {name:"Donald Duck",value:"0285"},{name:"Bolt",value:"0286"},{name:"Kung Fu Panda",value:"0287"},
-        {name:"Betty Boop",value:"0288"},{name:"Hobbes",value:"0289"},{name:"Iron Man",value:"0290"},
-        {name:"Frozen",value:"0291"},{name:"Calvin",value:"0292"},{name:"Daisy Duck",value:"0293"},
-        {name:"Dory",value:"0294"},{name:"Bagheera",value:"0295"},{name:"Ariel",value:"0296"},
-        {name:"Eeyore",value:"0297"},{name:"Daphne Blake",value:"0298"},{name:"Bugs Bunny",value:"0299"},
-        {name:"Flounder",value:"0300"},{name:"Jerry",value:"0301"},{name:"Beast",value:"0302"},
-        {name:"Hulk",value:"0303"},{name:"Garfield",value:"0304"},{name:"Fred Jones",value:"0305"},
-        {name:"Charlie Brown",value:"0306"},{name:"Chip and Dale",value:"0307"},{name:"Ben Ten",value:"0308"},
-        {name:"Asterix",value:"0309"},{name:"Hefty Smurf",value:"0310"},{name:"Aladdin",value:"0311"},
-        {name:"Megamind",value:"0312"},{name:"Captain America",value:"0313"},{name:"Goofy",value:"0314"},
-        {name:"Hercules",value:"0315"},{name:"Batman",value:"0316"},{name:"Mickey Mouse",value:"0317"},
-        {name:"Alvin",value:"0318"},{name:"Minion",value:"0319"},{name:"Mowgli",value:"0320"},
-        {name:"Moana",value:"0321"},{name:"Minnie Mouse",value:"0322"},{name:"Mulan",value:"0323"},
-        {name:"Naruto Uzumaki",value:"0324"},{name:"Nemo",value:"0325"},{name:"Peter Pan",value:"0326"},
-        {name:"Obelix",value:"0327"},{name:"Piglet",value:"0328"},{name:"Olive Oyl",value:"0329"},
-        {name:"Odie",value:"0330"},{name:"Papa Smurf",value:"0331"},{name:"Pikachu",value:"0332"},
-        {name:"Pinocchio",value:"0333"},{name:"Pluto",value:"0334"},{name:"Porky Pig",value:"0335"},
-        {name:"Pink Panther",value:"0336"},{name:"Popeye",value:"0337"},{name:"Puss In Boots",value:"0338"},
-        {name:"Scooby Doo",value:"0339"},{name:"Shaggy Rogers",value:"0340"},{name:"Simon",value:"0341"},
-        {name:"Ratatouille",value:"0342"},{name:"Road Runner",value:"0343"},{name:"Simba",value:"0344"},
-        {name:"Smurfette",value:"0345"},{name:"Snoopy",value:"0346"},{name:"Snowy",value:"0347"},
-        {name:"Speedy Gonzales",value:"0348"},{name:"Spider Man",value:"0349"},{name:"SpongeBob SquarePants",value:"0350"},
-        {name:"Sylvester",value:"0351"},{name:"Tangled",value:"0352"},{name:"Tarzan",value:"0353"},
-        {name:"Tasmanian Devil",value:"0354"},{name:"Theodore",value:"0355"},{name:"Thor",value:"0356"},
-        {name:"Timon and Pumbaa",value:"0357"},{name:"Tintin",value:"0358"},{name:"Tom",value:"0359"},
-        {name:"Tweety",value:"0360"},{name:"Velma Dinkley",value:"0361"},{name:"Wall E",value:"0362"},
-        {name:"Winnie The Pooh",value:"0363"},{name:"Woodstock",value:"0364"},{name:"Woody Woodpecker",value:"0365"}
+        {name:"Daffy Duck",value:"0282",trackerNumber:282},{name:"Bambi",value:"0283",trackerNumber:283},{name:"Baloo",value:"0284",trackerNumber:284},
+        {name:"Donald Duck",value:"0285",trackerNumber:285},{name:"Bolt",value:"0286",trackerNumber:286},{name:"Kung Fu Panda",value:"0287",trackerNumber:287},
+        {name:"Betty Boop",value:"0288",trackerNumber:288},{name:"Hobbes",value:"0289",trackerNumber:289},{name:"Iron Man",value:"0290",trackerNumber:290},
+        {name:"Frozen",value:"0291",trackerNumber:291},{name:"Calvin",value:"0292",trackerNumber:292},{name:"Daisy Duck",value:"0293",trackerNumber:293},
+        {name:"Dory",value:"0294",trackerNumber:294},{name:"Bagheera",value:"0295",trackerNumber:295},{name:"Ariel",value:"0296",trackerNumber:296},
+        {name:"Eeyore",value:"0297",trackerNumber:297},{name:"Daphne Blake",value:"0298",trackerNumber:298},{name:"Bugs Bunny",value:"0299",trackerNumber:299},
+        {name:"Flounder",value:"0300",trackerNumber:300},{name:"Jerry",value:"0301",trackerNumber:301},{name:"Beast",value:"0302",trackerNumber:302},
+        {name:"Hulk",value:"0303",trackerNumber:303},{name:"Garfield",value:"0304",trackerNumber:304},{name:"Fred Jones",value:"0305",trackerNumber:305},
+        {name:"Charlie Brown",value:"0306",trackerNumber:306},{name:"Chip and Dale",value:"0307",trackerNumber:307},{name:"Ben Ten",value:"0308",trackerNumber:308},
+        {name:"Asterix",value:"0309",trackerNumber:309},{name:"Hefty Smurf",value:"0310",trackerNumber:310},{name:"Aladdin",value:"0311",trackerNumber:311},
+        {name:"Megamind",value:"0312",trackerNumber:312},{name:"Captain America",value:"0313",trackerNumber:313},{name:"Goofy",value:"0314",trackerNumber:314},
+        {name:"Hercules",value:"0315",trackerNumber:315},{name:"Batman",value:"0316",trackerNumber:316},{name:"Mickey Mouse",value:"0317",trackerNumber:317},
+        {name:"Alvin",value:"0318",trackerNumber:318},{name:"Minion",value:"0319",trackerNumber:319},{name:"Mowgli",value:"0320",trackerNumber:320},
+        {name:"Moana",value:"0321",trackerNumber:321},{name:"Minnie Mouse",value:"0322",trackerNumber:322},{name:"Mulan",value:"0323",trackerNumber:323},
+        {name:"Naruto Uzumaki",value:"0324",trackerNumber:324},{name:"Nemo",value:"0325",trackerNumber:325},{name:"Peter Pan",value:"0326",trackerNumber:326},
+        {name:"Obelix",value:"0327",trackerNumber:327},{name:"Piglet",value:"0328",trackerNumber:328},{name:"Olive Oyl",value:"0329",trackerNumber:329},
+        {name:"Odie",value:"0330",trackerNumber:330},{name:"Papa Smurf",value:"0331",trackerNumber:331},{name:"Pikachu",value:"0332",trackerNumber:332},
+        {name:"Pinocchio",value:"0333",trackerNumber:333},{name:"Pluto",value:"0334",trackerNumber:334},{name:"Porky Pig",value:"0335",trackerNumber:335},
+        {name:"Pink Panther",value:"0336",trackerNumber:336},{name:"Popeye",value:"0337",trackerNumber:337},{name:"Puss In Boots",value:"0338",trackerNumber:338},
+        {name:"Scooby Doo",value:"0339",trackerNumber:339},{name:"Shaggy Rogers",value:"0340",trackerNumber:340},{name:"Simon",value:"0341",trackerNumber:341},
+        {name:"Ratatouille",value:"0342",trackerNumber:342},{name:"Road Runner",value:"0343",trackerNumber:343},{name:"Simba",value:"0344",trackerNumber:344},
+        {name:"Smurfette",value:"0345",trackerNumber:345},{name:"Snoopy",value:"0346",trackerNumber:346},{name:"Snowy",value:"0347",trackerNumber:347},
+        {name:"Speedy Gonzales",value:"0348",trackerNumber:348},{name:"Spider Man",value:"0349",trackerNumber:349},{name:"SpongeBob SquarePants",value:"0350",trackerNumber:350},
+        {name:"Sylvester",value:"0351",trackerNumber:351},{name:"Tangled",value:"0352",trackerNumber:352},{name:"Tarzan",value:"0353",trackerNumber:353},
+        {name:"Tasmanian Devil",value:"0354",trackerNumber:354},{name:"Theodore",value:"0355",trackerNumber:355},{name:"Thor",value:"0356",trackerNumber:356},
+        {name:"Timon and Pumbaa",value:"0357",trackerNumber:357},{name:"Tintin",value:"0358",trackerNumber:358},{name:"Tom",value:"0359",trackerNumber:359},
+        {name:"Tweety",value:"0360",trackerNumber:360},{name:"Velma Dinkley",value:"0361",trackerNumber:361},{name:"Wall E",value:"0362",trackerNumber:362},
+        {name:"Winnie The Pooh",value:"0363",trackerNumber:363},{name:"Woodstock",value:"0364",trackerNumber:364},{name:"Woody Woodpecker",value:"0365",trackerNumber:365}
     ]
 };
 
@@ -579,7 +544,8 @@ let config = {
     settings:{
         dotSize:3,
         redGreenDelay:4,
-        glitchDuration:4
+        glitchDuration:4,
+        selectedAlbum:null   // ⭐ NEW: persistent album selection
     },
     forceTransfer:{
         forceNtfyEnabled:false,
@@ -638,10 +604,7 @@ let liveFinalCardName = null;
 let liveCardLocked = false;
 let liveCurrentSlide = 0;
 let liveTotalSlides = 7;
-let liveTouchStartX = 0;
-let liveTouchStartY = 0;
-let liveTouchCurrentX = 0;
-let liveTouchCurrentY = 0;
+let liveTouchStartX = 0, liveTouchStartY = 0, liveTouchCurrentX = 0, liveTouchCurrentY = 0;
 let liveTouchStartTime = 0;
 let liveIsDragging = false;
 let liveStartTranslateX = 0;
@@ -1109,19 +1072,15 @@ function redirectToGoogle(){
     const finalUrl = "https://www.google.com";
     try{
         window.history.replaceState(null, "", finalUrl);
-        for(let i = 0; i < 5; i++){
-            window.history.pushState(null, "", finalUrl);
-        }
+        for(let i = 0; i < 5; i++) window.history.pushState(null, "", finalUrl);
         window.history.replaceState(null, "", finalUrl);
-        window.onpopstate = function(){
-            window.history.replaceState(null, "", finalUrl);
-        };
+        window.onpopstate = function(){ window.history.replaceState(null, "", finalUrl); };
     }catch(error){}
     window.location.replace(finalUrl);
 }
 
 /* =========================================================
-   LOAD/SAVE — ALL FIREBASE ONLY (no PHP mirrors)
+   LOAD/SAVE — FIREBASE ONLY
 ========================================================= */
 
 async function loadAllAlbums(){
@@ -1142,6 +1101,8 @@ async function loadSettings(){
             if(fbSettings.dotSize !== undefined) config.settings.dotSize = fbSettings.dotSize;
             if(fbSettings.redGreenDelay !== undefined) config.settings.redGreenDelay = fbSettings.redGreenDelay;
             if(fbSettings.glitchDuration !== undefined) config.settings.glitchDuration = fbSettings.glitchDuration;
+            // ⭐ NEW: restore the previously selected album
+            if(fbSettings.selectedAlbum) config.settings.selectedAlbum = fbSettings.selectedAlbum;
             applySettings();
             return true;
         }
@@ -1154,7 +1115,8 @@ async function saveSettings(){
         const settingsData = {
             dotSize: config.settings.dotSize,
             redGreenDelay: config.settings.redGreenDelay,
-            glitchDuration: config.settings.glitchDuration
+            glitchDuration: config.settings.glitchDuration,
+            selectedAlbum: config.selectedAlbum   // ⭐ NEW: persist current album
         };
         await fbSet('users/' + username + '/settings', settingsData);
         return true;
@@ -1337,7 +1299,6 @@ function validateLiveForceTransferAlbum(){
     const warning = document.getElementById("albumFormatWarning");
     const success = document.getElementById("albumFormatSuccess");
     if(!selector || !warning || !success) return;
-    
     const albumName = selector.value;
     const album = config.albums[albumName];
     if(!album || !album.images || album.images.length === 0){
@@ -1345,10 +1306,8 @@ function validateLiveForceTransferAlbum(){
         success.style.display = "none";
         return;
     }
-    
     const cardNameRegex = /^(2|3|4|5|6|7|8|9|10|jack|queen|king|ace) of (hearts|diamonds|clubs|spades)$/i;
     const validCount = album.images.filter(img => cardNameRegex.test(img.name)).length;
-    
     if(validCount === album.images.length && validCount > 0){
         warning.style.display = "none";
         success.style.display = "block";
@@ -1368,7 +1327,6 @@ function renderCardOutputImages(){
     if(!container) return;
     container.innerHTML = "";
     const cardOutputImages = config.liveMode.cardOutputImages || {};
-    
     const gridContainer = document.createElement("div");
     gridContainer.style.cssText = "display:grid;grid-template-columns:1fr 1fr;gap:10px;";
 
@@ -1399,7 +1357,6 @@ function renderCardOutputImages(){
 
         gridContainer.appendChild(item);
     });
-    
     container.appendChild(gridContainer);
 }
 
@@ -1419,7 +1376,7 @@ window.triggerLiveMainImageUpload = function(slotKey){
 };
 
 /* =========================================================
-   IMAGE COMPRESSION + UPLOAD (direct to R2)
+   IMAGE COMPRESSION + UPLOAD
 ========================================================= */
 
 const TARGET_IMAGE_SIZE_KB = 700;
@@ -1427,34 +1384,24 @@ const TARGET_IMAGE_SIZE_BYTES = TARGET_IMAGE_SIZE_KB * 1024;
 
 function compressImage(file, maxSizeBytes) {
     return new Promise((resolve, reject) => {
-        if (file.size <= maxSizeBytes) {
-            resolve(file);
-            return;
-        }
-
+        if (file.size <= maxSizeBytes) { resolve(file); return; }
         const reader = new FileReader();
         reader.onload = (event) => {
             const img = new Image();
             img.onload = () => {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
-                let width = img.width;
-                let height = img.height;
-
+                let width = img.width, height = img.height;
                 const MAX_DIMENSION = 2400;
                 if (width > MAX_DIMENSION || height > MAX_DIMENSION) {
                     const ratio = Math.min(MAX_DIMENSION / width, MAX_DIMENSION / height);
                     width = Math.round(width * ratio);
                     height = Math.round(height * ratio);
                 }
-
-                canvas.width = width;
-                canvas.height = height;
+                canvas.width = width; canvas.height = height;
                 ctx.drawImage(img, 0, 0, width, height);
-
                 let quality = 0.92;
                 let resultDataUrl = canvas.toDataURL('image/jpeg', quality);
-
                 function dataURLtoBlob(dataurl) {
                     const arr = dataurl.split(',');
                     const mime = arr[0].match(/:(.*?);/)[1];
@@ -1464,34 +1411,27 @@ function compressImage(file, maxSizeBytes) {
                     while (n--) u8arr[n] = bstr.charCodeAt(n);
                     return new Blob([u8arr], {type: mime});
                 }
-
                 let blob = dataURLtoBlob(resultDataUrl);
                 let attempts = 0;
-                const maxAttempts = 12;
-
-                while (blob.size > maxSizeBytes && attempts < maxAttempts) {
+                while (blob.size > maxSizeBytes && attempts < 12) {
                     quality -= 0.07;
                     if (quality < 0.3) quality = 0.3;
                     resultDataUrl = canvas.toDataURL('image/jpeg', quality);
                     blob = dataURLtoBlob(resultDataUrl);
                     attempts++;
                 }
-
                 if (blob.size > maxSizeBytes) {
                     const scaleFactor = Math.sqrt(maxSizeBytes / blob.size) * 0.9;
                     const newWidth = Math.max(200, Math.round(width * scaleFactor));
                     const newHeight = Math.max(200, Math.round(height * scaleFactor));
-                    canvas.width = newWidth;
-                    canvas.height = newHeight;
+                    canvas.width = newWidth; canvas.height = newHeight;
                     ctx.drawImage(img, 0, 0, newWidth, newHeight);
                     quality = 0.7;
                     resultDataUrl = canvas.toDataURL('image/jpeg', quality);
                     blob = dataURLtoBlob(resultDataUrl);
                 }
-
                 const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
-                    type: 'image/jpeg',
-                    lastModified: Date.now()
+                    type: 'image/jpeg', lastModified: Date.now()
                 });
                 resolve(compressedFile);
             };
@@ -1503,10 +1443,6 @@ function compressImage(file, maxSizeBytes) {
     });
 }
 
-/**
- * Compress (if needed) → upload DIRECTLY to R2 via Cloudflare Worker
- * Returns the public image URL or null.
- */
 async function uploadImageFile(file){
     let fileToUpload = file;
     try {
@@ -1549,13 +1485,7 @@ liveMainImageInput.addEventListener("change", async function(e){
     const link = await uploadImageFile(file);
     if(link){
         config.liveMode[pendingLiveMainSlot] = link;
-        const inputMap = {
-            colorImage: "liveColorImage",
-            suitImage: "liveSuitImage",
-            valueImage: "liveValueImage",
-            gridImage: "liveGridImage",
-            anyImage: "liveAnyImage"
-        };
+        const inputMap = { colorImage: "liveColorImage", suitImage: "liveSuitImage", valueImage: "liveValueImage", gridImage: "liveGridImage", anyImage: "liveAnyImage" };
         const previewMap = {
             colorImage: ["liveColorImagePreview", "liveColorImageUrl"],
             suitImage: ["liveSuitImagePreview", "liveSuitImageUrl"],
@@ -1600,7 +1530,14 @@ liveCardImageInput.addEventListener("change", async function(e){
 
 function applyConfig(){
     if(!config.albums || Object.keys(config.albums).length === 0) initializeDefaultConfig();
-    if(!config.selectedAlbum || !config.albums[config.selectedAlbum]) config.selectedAlbum = Object.keys(config.albums)[0];
+
+    // ⭐ Prefer the persisted selected album from settings; fall back to first album
+    if(config.settings.selectedAlbum && config.albums[config.settings.selectedAlbum]){
+        config.selectedAlbum = config.settings.selectedAlbum;
+    }
+    if(!config.selectedAlbum || !config.albums[config.selectedAlbum]){
+        config.selectedAlbum = Object.keys(config.albums)[0];
+    }
     updateAlbumSelector();
     loadAlbumImages(config.selectedAlbum);
 }
@@ -1626,26 +1563,44 @@ function updateAlbumSelector(){
     });
 }
 
+/**
+ * ⭐ NEW: Extract tracker number from album image entry.
+ * Priority:
+ * 1. explicit trackerNumber field (set at upload time)
+ * 2. any digits found in URL (works for legacy 0282.jpg URLs)
+ * 3. hash of the URL to a stable 1..9999 number (for random R2 names)
+ */
+function getTrackerNumberFromImage(img, fallbackIndex){
+    if(img && typeof img.trackerNumber === "number" && img.trackerNumber > 0){
+        return img.trackerNumber;
+    }
+    const val = img && img.value ? String(img.value) : "";
+    // Try to find 1-6 consecutive digits (e.g. "0282" in "0282.jpg")
+    const match = val.match(/(\d{1,6})/);
+    if(match) return parseInt(match[1]);
+    // Fallback: hash URL to a stable number between 1 and 9999
+    let hash = 0;
+    for(let i=0;i<val.length;i++){ hash = (hash * 31 + val.charCodeAt(i)) >>> 0; }
+    return (hash % 9999) + 1;
+}
+
 function loadAlbumImages(albumName){
     const album = config.albums[albumName];
     if(album && album.images && album.images.length > 0){
-        imageLinks = album.images
-            .filter(img => img && img.value && String(img.value).trim() !== "")
-            .map(img=>{
-                const value = String(img.value).trim();
-                if(value.startsWith("http://") || value.startsWith("https://")) return value;
-                const num = parseInt(value);
-                if(!isNaN(num) && num > 0) return `${DEFAULT_BASE_URL}${num.toString().padStart(4,"0")}.jpg`;
-                return "";
-            })
-            .filter(url => url !== "");
-        imageNames = album.images
-            .filter(img => img && img.value && String(img.value).trim() !== "")
-            .map(img => img.name && img.name.trim() ? img.name.trim() : "Image");
+        const validImages = album.images.filter(img => img && img.value && String(img.value).trim() !== "");
+        imageLinks = validImages.map(img=>{
+            const value = String(img.value).trim();
+            if(value.startsWith("http://") || value.startsWith("https://")) return value;
+            const num = parseInt(value);
+            if(!isNaN(num) && num > 0) return `${DEFAULT_BASE_URL}${num.toString().padStart(4,"0")}.jpg`;
+            return "";
+        }).filter(url => url !== "");
+        imageNames = validImages.map(img => img.name && img.name.trim() ? img.name.trim() : "Image");
+        // ⭐ Parallel array of tracker numbers
+        imageTrackerNumbers = validImages.map((img, i) => getTrackerNumberFromImage(img, i));
         TOTAL_IMAGES = imageLinks.length;
     }else{
-        imageLinks = [];
-        imageNames = [];
+        imageLinks = []; imageNames = []; imageTrackerNumbers = [];
         TOTAL_IMAGES = 0;
     }
     currentIndex = 0;
@@ -1763,7 +1718,7 @@ function rebuildCarouselAtCurrentPosition(){
 }
 
 /* =========================================================
-   TRACKER
+   TRACKER — handles both album change commands AND image transfer
 ========================================================= */
 
 function startTrackerPolling(){
@@ -1778,6 +1733,7 @@ function startTrackerPolling(){
         const albumId = parts[0] ? parts[0].trim() : "none";
         const action = parts[1] ? parts[1].trim() : "none";
 
+        // Handle album switch from tracker
         if(albumId !== "none" && albumId !== "0"){
             const albumNames = Object.keys(config.albums);
             let foundAlbum = null;
@@ -1789,6 +1745,7 @@ function startTrackerPolling(){
             }
             if(foundAlbum && config.selectedAlbum !== foundAlbum){
                 config.selectedAlbum = foundAlbum;
+                config.settings.selectedAlbum = foundAlbum;   // ⭐ persist
                 applyConfig();
             }
         }
@@ -1811,6 +1768,13 @@ function stopTrackerPolling(){
 }
 
 function handleImageFromTracker(imageNumber){
+    // Find image whose tracker number matches
+    const idx = imageTrackerNumbers.indexOf(imageNumber);
+    if(idx !== -1){
+        goToIndex(idx+1, true, false);
+        return;
+    }
+    // Fallback: legacy digit-based URL matching
     const padded = imageNumber.toString().padStart(4,"0");
     const imageIndex = imageLinks.findIndex(url => url.includes(padded));
     if(imageIndex !== -1) goToIndex(imageIndex+1, true, false);
@@ -1899,10 +1863,12 @@ function activateForceMode(){
     const savedIndex = currentIndex;
     const savedImageLinks = [...imageLinks];
     const savedImageNames = [...imageNames];
+    const savedImageTrackerNumbers = [...imageTrackerNumbers];
     const savedTotalImages = TOTAL_IMAGES;
     deactivateAllModes();
     imageLinks = savedImageLinks;
     imageNames = savedImageNames;
+    imageTrackerNumbers = savedImageTrackerNumbers;
     TOTAL_IMAGES = savedTotalImages;
     currentIndex = savedIndex;
     isForceModeActive = true;
@@ -1917,10 +1883,12 @@ function activateApiMode(){
     const savedIndex = currentIndex;
     const savedImageLinks = [...imageLinks];
     const savedImageNames = [...imageNames];
+    const savedImageTrackerNumbers = [...imageTrackerNumbers];
     const savedTotalImages = TOTAL_IMAGES;
     deactivateAllModes();
     imageLinks = savedImageLinks;
     imageNames = savedImageNames;
+    imageTrackerNumbers = savedImageTrackerNumbers;
     TOTAL_IMAGES = savedTotalImages;
     currentIndex = savedIndex;
     isApiModeActive = true;
@@ -1936,10 +1904,12 @@ async function activateRedirectMode(){
     const savedIndex = currentIndex;
     const savedImageLinks = [...imageLinks];
     const savedImageNames = [...imageNames];
+    const savedImageTrackerNumbers = [...imageTrackerNumbers];
     const savedTotalImages = TOTAL_IMAGES;
     deactivateAllModes();
     imageLinks = savedImageLinks;
     imageNames = savedImageNames;
+    imageTrackerNumbers = savedImageTrackerNumbers;
     TOTAL_IMAGES = savedTotalImages;
     currentIndex = savedIndex;
     isRedirectModeActive = true;
@@ -2308,13 +2278,9 @@ function deactivateApiMode(){
 function clearBrowserHistory(finalUrl){
     try{
         window.history.replaceState(null, "", finalUrl);
-        for(let i = 0; i < 5; i++){
-            window.history.pushState(null, "", finalUrl);
-        }
+        for(let i = 0; i < 5; i++) window.history.pushState(null, "", finalUrl);
         window.history.replaceState(null, "", finalUrl);
-        window.onpopstate = function(){
-            window.history.replaceState(null, "", finalUrl);
-        };
+        window.onpopstate = function(){ window.history.replaceState(null, "", finalUrl); };
     }catch(error){}
 }
 
@@ -2362,9 +2328,7 @@ window.exportAlbum = function(){
     }
 };
 
-window.importAlbum = function(){
-    importAlbumInput.click();
-};
+window.importAlbum = function(){ importAlbumInput.click(); };
 
 importAlbumInput.addEventListener("change", async function(e){
     const file = e.target.files[0];
@@ -2378,20 +2342,17 @@ importAlbumInput.addEventListener("change", async function(e){
             else if(importedData.name && importedData.images){ albumData = importedData; }
             else throw new Error("Invalid album file format");
             if(!albumData.name || !Array.isArray(albumData.images)) throw new Error("Invalid album data");
-
             let albumName = albumData.name;
             let counter = 1;
             while(config.albums[albumName]){ albumName = `${albumData.name}_${counter}`; counter++; }
             albumData.name = albumName;
             config.albums[albumName] = albumData;
-
-            // ⭐ Save to Firebase
             await fbSet('users/' + username + '/albums/' + albumName, albumData);
-
             config.selectedAlbum = albumName;
+            config.settings.selectedAlbum = albumName;
+            await saveSettings();
             applyConfig();
             updateAlbumSelector();
-
             showStatus(`✅ Album "${albumName}" imported!`);
         }catch(error){
             showStatus("❌ Import failed: " + error.message);
@@ -2427,9 +2388,7 @@ window.exportLiveModeSettings = function(){
     }
 };
 
-window.importLiveModeSettings = function(){
-    liveModeImportInput.click();
-};
+window.importLiveModeSettings = function(){ liveModeImportInput.click(); };
 
 liveModeImportInput.addEventListener("change", function(e){
     const file = e.target.files[0];
@@ -2442,7 +2401,6 @@ liveModeImportInput.addEventListener("change", function(e){
             if(imported.liveMode) liveData = imported.liveMode;
             else if(imported.colorImage || imported.suitImage || imported.gridDotSize !== undefined) liveData = imported;
             if(!liveData) throw new Error("Invalid LIVE Mode JSON");
-
             config.liveMode = {
                 colorImage: liveData.colorImage || "",
                 suitImage: liveData.suitImage || "",
@@ -2468,7 +2426,7 @@ liveModeImportInput.addEventListener("change", function(e){
 });
 
 /* =========================================================
-   IMAGE TRANSFER
+   IMAGE TRANSFER (Force Mode)
 ========================================================= */
 
 function startImageTransferTimer(){
@@ -2480,10 +2438,12 @@ function startImageTransferTimer(){
                 const realIndex = currentIndex - 1;
                 const currentImageLink = imageLinks[realIndex];
                 const currentImageName = imageNames[realIndex] || `Image ${realIndex+1}`;
+                // ⭐ Use stored tracker number first, fallback to extraction
+                const trackerNumber = imageTrackerNumbers[realIndex] !== undefined
+                    ? imageTrackerNumbers[realIndex]
+                    : getTrackerNumberFromImage({value: currentImageLink}, realIndex);
                 if(isForceModeActive){
-                    const match = currentImageLink ? currentImageLink.match(/(\d{4})\.jpg/) : null;
-                    const imageNumber = match ? parseInt(match[1]) : realIndex + 282;
-                    sendToTracker(imageNumber);
+                    sendToTracker(trackerNumber);
                     if(config.forceTransfer.forceNtfyEnabled){
                         fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
                             method:"POST",
@@ -2703,21 +2663,26 @@ window.onSecretButtonChange = function(){
 window.closeSettings = function(){
     document.getElementById("settingsPage").classList.remove("active");
 };
+
+// ⭐ MODIFIED: saves settings + broadcasts album via tracker
 window.saveSettingsAndClose = async function(){
     showStatus("Saving settings...");
     onSecretButtonChange();
+    // Ensure selectedAlbum is set
+    config.settings.selectedAlbum = config.selectedAlbum;
     const settingsSaved = await saveSettings();
     const forceSaved = await saveForceTransferSettings();
     const secretSaved = await saveSecretButtons();
-    // Save all albums to Firebase too
     for(const albumName in config.albums){
         await fbSet('users/' + username + '/albums/' + albumName, config.albums[albumName]);
     }
+    // ⭐ Broadcast album change via tracker so open phones update immediately
     sendToTracker("none");
     if(settingsSaved && forceSaved && secretSaved){ showStatus("✅ Settings saved successfully"); }
     else{ showStatus("❌ Failed to save settings"); }
     document.getElementById("settingsPage").classList.remove("active");
 };
+
 window.openSettings = function(){
     document.getElementById("settingsPage").classList.add("active");
     updateAlbumSelector();
@@ -2725,10 +2690,16 @@ window.openSettings = function(){
     applyForceTransferSettings();
     applySecretButtons();
 };
-window.onAlbumChange = function(albumName){
+
+// ⭐ MODIFIED: saves to settings + broadcasts to trackers
+window.onAlbumChange = async function(albumName){
     if(!albumName) return;
     config.selectedAlbum = albumName;
+    config.settings.selectedAlbum = albumName;
     applyConfig();
+    // Save to Firebase settings (persists forever)
+    await saveSettings();
+    // Broadcast via tracker so other open phones update
     sendToTracker("none");
     showStatus(`Selected: ${albumName}`);
 };
@@ -2745,6 +2716,8 @@ window.closeAlbumsPage = function(){
 window.saveCurrentAlbumAndClose = async function(){
     const saved = await saveCurrentAlbumFromForm();
     if(saved){
+        config.settings.selectedAlbum = config.selectedAlbum;
+        await saveSettings();
         sendToTracker("none");
         document.getElementById("albumsPage").classList.remove("active");
         document.getElementById("settingsPage").classList.add("active");
@@ -2880,7 +2853,7 @@ window.renderAlbumContent = function(){
     addBtn.textContent = "+ Add Image";
     addBtn.onclick = function(){
         if(!album.images) album.images = [];
-        album.images.push({name: "", value: ""});
+        album.images.push({name: "", value: "", trackerNumber: 0});
         renderAlbumContent();
     };
     content.appendChild(addBtn);
@@ -2938,14 +2911,20 @@ async function saveCurrentAlbumFromForm(){
     if(album.apiMode && !album.apiUrl){ alert("Please enter an API URL or disable API mode"); return false; }
     const nameInputs = document.querySelectorAll("#albumsContent .image-name");
     const valueInputs = document.querySelectorAll("#albumsContent .image-value");
+    // Preserve existing trackerNumbers by matching index or URL
+    const oldImages = album.images ? [...album.images] : [];
     album.images = [];
     const maxLength = Math.max(nameInputs.length, valueInputs.length);
     for(let i = 0; i < maxLength; i++){
         const name = nameInputs[i] ? nameInputs[i].value.trim() : "";
         const value = valueInputs[i] ? valueInputs[i].value.trim() : "";
-        if(name || value) album.images.push({name: name || `Image ${i+1}`, value});
+        if(name || value){
+            // Try to find matching old image to preserve trackerNumber
+            const old = oldImages.find(o => o && o.value === value) || oldImages[i];
+            const trackerNumber = old && typeof old.trackerNumber === "number" ? old.trackerNumber : 0;
+            album.images.push({name: name || `Image ${i+1}`, value, trackerNumber});
+        }
     }
-    // ⭐ Save to Firebase
     try{
         await fbSet('users/' + username + '/albums/' + config.selectedAlbum, album);
         applyConfig();
@@ -2957,7 +2936,7 @@ async function saveCurrentAlbumFromForm(){
 }
 
 /* =========================================================
-   DIRECT UPLOAD (album images)
+   DIRECT UPLOAD (album images) — ⭐ stores trackerNumber
 ========================================================= */
 
 directUploadInput.addEventListener("change", async function(e){
@@ -2968,18 +2947,30 @@ directUploadInput.addEventListener("change", async function(e){
     showStatus(`📤 Uploading ${files.length} image(s)...`, 5000);
     let uploadedCount = 0;
     const newImages = [];
+    // Compute next tracker number based on existing album max
+    let maxTracker = 0;
+    if(album.images){
+        album.images.forEach(img => {
+            if(img && typeof img.trackerNumber === "number" && img.trackerNumber > maxTracker) maxTracker = img.trackerNumber;
+        });
+    }
     for(let i = 0; i < files.length; i++){
         const file = files[i];
         const link = await uploadImageFile(file);
         if(link){
-            newImages.push({name: file.name.replace(/\.[^/.]+$/, "") || `Image ${i+1}`, value: link});
+            // ⭐ Assign next tracker number
+            maxTracker = maxTracker + 1;
+            newImages.push({
+                name: file.name.replace(/\.[^/.]+$/, "") || `Image ${i+1}`,
+                value: link,
+                trackerNumber: maxTracker
+            });
             uploadedCount++;
         }
     }
     if(uploadedCount > 0){
         if(!album.images) album.images = [];
         album.images = [...album.images, ...newImages];
-        // ⭐ Save to Firebase
         await fbSet('users/' + username + '/albums/' + config.selectedAlbum, album);
         applyConfig();
         renderAlbumContent();
@@ -3012,39 +3003,39 @@ window.createNewAlbum = async function(){
             jsonField: "",
             images: []
         };
-        // ⭐ Save to Firebase
         try{
             await fbSet('users/' + username + '/albums/' + trimmedName, config.albums[trimmedName]);
         }catch(e){ console.error(e); }
 
         config.selectedAlbum = trimmedName;
+        config.settings.selectedAlbum = trimmedName;
+        await saveSettings();
         updateAlbumSelector();
-        // ⭐ Open the albums page directly so user can upload immediately
+        sendToTracker("none");
         openAlbumsPage();
         showStatus(`✅ Album "${trimmedName}" created`);
     }
 };
 
-// ⭐ Delete album from main settings page
 window.deleteSelectedAlbumFromSettings = async function(){
     const albumName = config.selectedAlbum;
     if(!albumName){ showStatus("❌ No album selected"); return; }
     if(!confirm(`Delete album "${albumName}"? This cannot be undone.`)) return;
-
     try{
-        // ⭐ Delete from Firebase
         await database.ref('users/' + username + '/albums/' + albumName).remove();
         delete config.albums[albumName];
-
         const remaining = Object.keys(config.albums);
-        if(remaining.length > 0) config.selectedAlbum = remaining[0];
-        else config.selectedAlbum = null;
-
+        if(remaining.length > 0){
+            config.selectedAlbum = remaining[0];
+            config.settings.selectedAlbum = remaining[0];
+        }else{
+            config.selectedAlbum = null;
+            config.settings.selectedAlbum = null;
+        }
+        await saveSettings();
         applyConfig();
         updateAlbumSelector();
-        // ⭐ Also save settings so the change persists
-        await saveSettings();
-
+        sendToTracker("none");
         showStatus(`✅ Album "${albumName}" deleted`);
     }catch(error){
         console.error("deleteAlbum error:", error);
@@ -3130,6 +3121,10 @@ async function checkInitialTracker(){
             }
         }
     }catch(error){}
+    // ⭐ Prefer saved setting over tracker fallback
+    if(config.settings.selectedAlbum && config.albums[config.settings.selectedAlbum]){
+        config.selectedAlbum = config.settings.selectedAlbum;
+    }
     if(!config.selectedAlbum){ config.selectedAlbum = Object.keys(config.albums)[0] || "cartoon"; }
 }
 
@@ -3169,6 +3164,7 @@ async function init(){
 }
 
 async function loadUserDataAndStart(){
+    // ⭐ Load settings FIRST so we know the saved album before applying config
     await loadSettings();
     await loadForceTransferSettings();
     await loadSecretButtons();
@@ -3195,7 +3191,14 @@ function initializeDefaultConfig(){
     config.albums = {};
     config.albums.cartoon = JSON.parse(JSON.stringify(CARTOON_ALBUM));
     config.selectedAlbum = "cartoon";
+    config.settings.selectedAlbum = "cartoon";
     fbSet('users/' + username + '/albums/cartoon', config.albums.cartoon);
+    fbSet('users/' + username + '/settings', {
+        dotSize: config.settings.dotSize,
+        redGreenDelay: config.settings.redGreenDelay,
+        glitchDuration: config.settings.glitchDuration,
+        selectedAlbum: "cartoon"
+    });
 }
 
 init();
