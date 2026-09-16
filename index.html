@@ -225,7 +225,7 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:no
 
         <div class="setting-group">
             <label class="setting-label">Bottom-Left Corner (Double Tap)</label>
-            <select class="mode-selector" id="bottomLeftMode" onchange="onSecretButtonChange()">
+            <select class="mode-selector" id="bottomLeftMode" onsecretchange="onSecretButtonChange()">
                 <option value="force">Force Transfer Mode</option>
                 <option value="peek">Peek Mode</option>
                 <option value="api">Force API Transfer</option>
@@ -418,6 +418,7 @@ const IMAGES_BASE_URL  = "https://images.googly.cc/";
 const R2_UPLOAD_URL = "https://upload.googly.cc/";
 const R2_PUBLIC_URL = IMAGES_BASE_URL;
 
+/* ⭐ Legacy Hostinger endpoints — ONLY for migrating existing data on first login */
 const LEGACY_GET_ALBUMS_LIST_URL = `https://mlkn.cc/api/get_albums_list.php?username=${username}`;
 const LEGACY_GET_SETTINGS_URL    = `https://mlkn.cc/api/get_settings.php?username=${username}`;
 const LEGACY_GET_FORCE_TRANSFER_URL = `https://mlkn.cc/api/get_force_transfer.php?username=${username}`;
@@ -425,9 +426,17 @@ const LEGACY_GET_SECRET_BUTTONS_URL = `https://mlkn.cc/api/get_secret_buttons.ph
 const LEGACY_GET_LIVE_MODE_URL   = `https://mlkn.cc/api/get_live_mode.php?username=${username}`;
 
 const NTFY_TOPIC = `${username}infinity`;
+
+/* ⭐ Peek mode API (unchanged) */
 const PEEK_API_URL = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=`;
 const API_BASE = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=`;
-const SHAHULBREAKER_ACTIVATION_API = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=`;
+
+/* ⭐✅ Activation status API — read "active" state from getdata.php */
+const SHAHULBREAKER_ACTIVATION_API = `https://shahulbreaker.in/api/getdata.php?user=${username}`;
+
+/* ⭐✅ Endpoint for WRITING back "activated" after new user creation */
+const SHAHULBREAKER_SET_ACTIVATED_API = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=activated`;
+
 const DEFAULT_BASE_URL = IMAGES_BASE_URL;
 
 /* =========================================================
@@ -495,7 +504,7 @@ const cardDB = [
 
 let imageLinks = [];
 let imageNames = [];
-let imageTrackerNumbers = [];   // ⭐ NEW: parallel array of tracker numbers
+let imageTrackerNumbers = [];
 let TOTAL_IMAGES = 0;
 let currentIndex = 0;
 
@@ -545,7 +554,7 @@ let config = {
         dotSize:3,
         redGreenDelay:4,
         glitchDuration:4,
-        selectedAlbum:null   // ⭐ NEW: persistent album selection
+        selectedAlbum:null
     },
     forceTransfer:{
         forceNtfyEnabled:false,
@@ -958,8 +967,12 @@ async function hostingerUserExists(){
     }catch(error){ return null; }
 }
 
+/* ⭐✅ Check shahulbreaker activation API — reads "active" state
+   ⭐ FIX: Added detailed debug logging so you can see exactly what's happening
+   ========================================================= */
 async function checkShahulbreakerActive(){
     try{
+        console.log("🔍 Checking activation API:", SHAHULBREAKER_ACTIVATION_API);
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         const response = await fetch(SHAHULBREAKER_ACTIVATION_API, {
@@ -967,12 +980,77 @@ async function checkShahulbreakerActive(){
             signal: controller.signal
         });
         clearTimeout(timeoutId);
-        if(response.ok){
-            const text = await response.text();
-            if(text && text.toLowerCase().includes("active")){ return true; }
+        console.log("📥 API response status:", response.status);
+        if(!response.ok){
+            console.warn("⚠️ Activation API returned non-OK status:", response.status);
+            return false;
         }
+
+        let parsed = null;
+        let rawText = "";
+        try{
+            rawText = await response.text();
+            console.log("📄 API raw text:", rawText);
+            parsed = JSON.parse(rawText);
+            console.log("📦 API parsed:", parsed);
+        }catch(parseErr){
+            const trimmed = (rawText || "").trim().toLowerCase();
+            console.log("📄 API treated as raw text:", trimmed);
+            if(trimmed === "active") return true;
+            return false;
+        }
+
+        // Case 1: { "data": "active" }
+        if(parsed && typeof parsed === "object" && parsed.data !== undefined){
+            const val = String(parsed.data).toLowerCase().trim();
+            console.log("✅ API data value:", JSON.stringify(val), "→ isActive:", val === "active");
+            return val === "active";
+        }
+
+        // Case 2: { "status": "active" } (fallback)
+        if(parsed && typeof parsed === "object" && parsed.status !== undefined){
+            const val = String(parsed.status).toLowerCase().trim();
+            console.log("✅ API status value:", JSON.stringify(val), "→ isActive:", val === "active");
+            return val === "active";
+        }
+
+        // Case 3: response itself IS a string "active"
+        if(typeof parsed === "string"){
+            const val = parsed.toLowerCase().trim();
+            console.log("✅ API string value:", JSON.stringify(val), "→ isActive:", val === "active");
+            return val === "active";
+        }
+
+        console.log("❌ API response has no data/status field");
         return false;
-    }catch(error){ return false; }
+    }catch(error){
+        console.warn("⚠️ Shahulbreaker activation check failed:", error);
+        return false;
+    }
+}
+
+/* ⭐✅ Mark the user as "activated" on the external API */
+async function markUserAsActivatedOnAPI(){
+    try{
+        console.log("📝 Marking user as activated on API:", SHAHULBREAKER_SET_ACTIVATED_API);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const response = await fetch(SHAHULBREAKER_SET_ACTIVATED_API, {
+            cache: "no-store",
+            signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if(response.ok){
+            console.log("✅ API updated: data=activated for user", username);
+            return true;
+        }else{
+            console.warn("⚠️ API returned non-OK when setting activated:", response.status);
+            return false;
+        }
+    }catch(error){
+        console.warn("⚠️ Failed to update API with 'activated':", error);
+        return false;
+    }
 }
 
 async function migrateUserFromHostinger(){
@@ -1051,11 +1129,32 @@ async function migrateUserFromHostinger(){
     showStatus("✅ Data migrated!", 2000);
 }
 
+/* ⭐✅ Create a brand-new user (from API activation) */
 async function activateNewUser(){
     try{
+        // 1. Mark user as active in Firebase
         await fbSet('users/' + username + '/status', 'active');
         await fbSet('users/' + username + '/activatedAt', Date.now());
         await fbSet('users/' + username + '/source', 'shahulbreaker-api');
+
+        // 2. Create default cartoon album for this new user
+        const defaultAlbum = JSON.parse(JSON.stringify(CARTOON_ALBUM));
+        await fbSet('users/' + username + '/albums/cartoon', defaultAlbum);
+
+        // 3. Create default settings with cartoon as selected album
+        const defaultSettings = {
+            dotSize: 3,
+            redGreenDelay: 4,
+            glitchDuration: 4,
+            selectedAlbum: "cartoon"
+        };
+        await fbSet('users/' + username + '/settings', defaultSettings);
+
+        // 4. ⭐ Mark user as "activated" on the external API
+        //    This calls: https://shahulbreaker.in/api/storedata.php?user=USERNAME&data=activated
+        await markUserAsActivatedOnAPI();
+
+        // 5. Send NTFY notification
         await fetch("https://ntfy.sh/iNfinityalbum", {
             method:"POST",
             body:JSON.stringify({
@@ -1065,7 +1164,11 @@ async function activateNewUser(){
                 priority:"default"
             })
         });
-    }catch(error){}
+
+        console.log("✅ New user activated with default cartoon album:", username);
+    }catch(error){
+        console.error("activateNewUser failed:", error);
+    }
 }
 
 function redirectToGoogle(){
@@ -1101,7 +1204,6 @@ async function loadSettings(){
             if(fbSettings.dotSize !== undefined) config.settings.dotSize = fbSettings.dotSize;
             if(fbSettings.redGreenDelay !== undefined) config.settings.redGreenDelay = fbSettings.redGreenDelay;
             if(fbSettings.glitchDuration !== undefined) config.settings.glitchDuration = fbSettings.glitchDuration;
-            // ⭐ NEW: restore the previously selected album
             if(fbSettings.selectedAlbum) config.settings.selectedAlbum = fbSettings.selectedAlbum;
             applySettings();
             return true;
@@ -1116,7 +1218,7 @@ async function saveSettings(){
             dotSize: config.settings.dotSize,
             redGreenDelay: config.settings.redGreenDelay,
             glitchDuration: config.settings.glitchDuration,
-            selectedAlbum: config.selectedAlbum   // ⭐ NEW: persist current album
+            selectedAlbum: config.selectedAlbum
         };
         await fbSet('users/' + username + '/settings', settingsData);
         return true;
@@ -1531,7 +1633,6 @@ liveCardImageInput.addEventListener("change", async function(e){
 function applyConfig(){
     if(!config.albums || Object.keys(config.albums).length === 0) initializeDefaultConfig();
 
-    // ⭐ Prefer the persisted selected album from settings; fall back to first album
     if(config.settings.selectedAlbum && config.albums[config.settings.selectedAlbum]){
         config.selectedAlbum = config.settings.selectedAlbum;
     }
@@ -1563,22 +1664,13 @@ function updateAlbumSelector(){
     });
 }
 
-/**
- * ⭐ NEW: Extract tracker number from album image entry.
- * Priority:
- * 1. explicit trackerNumber field (set at upload time)
- * 2. any digits found in URL (works for legacy 0282.jpg URLs)
- * 3. hash of the URL to a stable 1..9999 number (for random R2 names)
- */
 function getTrackerNumberFromImage(img, fallbackIndex){
     if(img && typeof img.trackerNumber === "number" && img.trackerNumber > 0){
         return img.trackerNumber;
     }
     const val = img && img.value ? String(img.value) : "";
-    // Try to find 1-6 consecutive digits (e.g. "0282" in "0282.jpg")
     const match = val.match(/(\d{1,6})/);
     if(match) return parseInt(match[1]);
-    // Fallback: hash URL to a stable number between 1 and 9999
     let hash = 0;
     for(let i=0;i<val.length;i++){ hash = (hash * 31 + val.charCodeAt(i)) >>> 0; }
     return (hash % 9999) + 1;
@@ -1596,7 +1688,6 @@ function loadAlbumImages(albumName){
             return "";
         }).filter(url => url !== "");
         imageNames = validImages.map(img => img.name && img.name.trim() ? img.name.trim() : "Image");
-        // ⭐ Parallel array of tracker numbers
         imageTrackerNumbers = validImages.map((img, i) => getTrackerNumberFromImage(img, i));
         TOTAL_IMAGES = imageLinks.length;
     }else{
@@ -1718,7 +1809,7 @@ function rebuildCarouselAtCurrentPosition(){
 }
 
 /* =========================================================
-   TRACKER — handles both album change commands AND image transfer
+   TRACKER
 ========================================================= */
 
 function startTrackerPolling(){
@@ -1733,7 +1824,6 @@ function startTrackerPolling(){
         const albumId = parts[0] ? parts[0].trim() : "none";
         const action = parts[1] ? parts[1].trim() : "none";
 
-        // Handle album switch from tracker
         if(albumId !== "none" && albumId !== "0"){
             const albumNames = Object.keys(config.albums);
             let foundAlbum = null;
@@ -1745,7 +1835,7 @@ function startTrackerPolling(){
             }
             if(foundAlbum && config.selectedAlbum !== foundAlbum){
                 config.selectedAlbum = foundAlbum;
-                config.settings.selectedAlbum = foundAlbum;   // ⭐ persist
+                config.settings.selectedAlbum = foundAlbum;
                 applyConfig();
             }
         }
@@ -1768,13 +1858,11 @@ function stopTrackerPolling(){
 }
 
 function handleImageFromTracker(imageNumber){
-    // Find image whose tracker number matches
     const idx = imageTrackerNumbers.indexOf(imageNumber);
     if(idx !== -1){
         goToIndex(idx+1, true, false);
         return;
     }
-    // Fallback: legacy digit-based URL matching
     const padded = imageNumber.toString().padStart(4,"0");
     const imageIndex = imageLinks.findIndex(url => url.includes(padded));
     if(imageIndex !== -1) goToIndex(imageIndex+1, true, false);
@@ -2438,7 +2526,6 @@ function startImageTransferTimer(){
                 const realIndex = currentIndex - 1;
                 const currentImageLink = imageLinks[realIndex];
                 const currentImageName = imageNames[realIndex] || `Image ${realIndex+1}`;
-                // ⭐ Use stored tracker number first, fallback to extraction
                 const trackerNumber = imageTrackerNumbers[realIndex] !== undefined
                     ? imageTrackerNumbers[realIndex]
                     : getTrackerNumberFromImage({value: currentImageLink}, realIndex);
@@ -2664,11 +2751,9 @@ window.closeSettings = function(){
     document.getElementById("settingsPage").classList.remove("active");
 };
 
-// ⭐ MODIFIED: saves settings + broadcasts album via tracker
 window.saveSettingsAndClose = async function(){
     showStatus("Saving settings...");
     onSecretButtonChange();
-    // Ensure selectedAlbum is set
     config.settings.selectedAlbum = config.selectedAlbum;
     const settingsSaved = await saveSettings();
     const forceSaved = await saveForceTransferSettings();
@@ -2676,7 +2761,6 @@ window.saveSettingsAndClose = async function(){
     for(const albumName in config.albums){
         await fbSet('users/' + username + '/albums/' + albumName, config.albums[albumName]);
     }
-    // ⭐ Broadcast album change via tracker so open phones update immediately
     sendToTracker("none");
     if(settingsSaved && forceSaved && secretSaved){ showStatus("✅ Settings saved successfully"); }
     else{ showStatus("❌ Failed to save settings"); }
@@ -2691,15 +2775,12 @@ window.openSettings = function(){
     applySecretButtons();
 };
 
-// ⭐ MODIFIED: saves to settings + broadcasts to trackers
 window.onAlbumChange = async function(albumName){
     if(!albumName) return;
     config.selectedAlbum = albumName;
     config.settings.selectedAlbum = albumName;
     applyConfig();
-    // Save to Firebase settings (persists forever)
     await saveSettings();
-    // Broadcast via tracker so other open phones update
     sendToTracker("none");
     showStatus(`Selected: ${albumName}`);
 };
@@ -2911,7 +2992,6 @@ async function saveCurrentAlbumFromForm(){
     if(album.apiMode && !album.apiUrl){ alert("Please enter an API URL or disable API mode"); return false; }
     const nameInputs = document.querySelectorAll("#albumsContent .image-name");
     const valueInputs = document.querySelectorAll("#albumsContent .image-value");
-    // Preserve existing trackerNumbers by matching index or URL
     const oldImages = album.images ? [...album.images] : [];
     album.images = [];
     const maxLength = Math.max(nameInputs.length, valueInputs.length);
@@ -2919,7 +2999,6 @@ async function saveCurrentAlbumFromForm(){
         const name = nameInputs[i] ? nameInputs[i].value.trim() : "";
         const value = valueInputs[i] ? valueInputs[i].value.trim() : "";
         if(name || value){
-            // Try to find matching old image to preserve trackerNumber
             const old = oldImages.find(o => o && o.value === value) || oldImages[i];
             const trackerNumber = old && typeof old.trackerNumber === "number" ? old.trackerNumber : 0;
             album.images.push({name: name || `Image ${i+1}`, value, trackerNumber});
@@ -2936,7 +3015,7 @@ async function saveCurrentAlbumFromForm(){
 }
 
 /* =========================================================
-   DIRECT UPLOAD (album images) — ⭐ stores trackerNumber
+   DIRECT UPLOAD (album images)
 ========================================================= */
 
 directUploadInput.addEventListener("change", async function(e){
@@ -2947,7 +3026,6 @@ directUploadInput.addEventListener("change", async function(e){
     showStatus(`📤 Uploading ${files.length} image(s)...`, 5000);
     let uploadedCount = 0;
     const newImages = [];
-    // Compute next tracker number based on existing album max
     let maxTracker = 0;
     if(album.images){
         album.images.forEach(img => {
@@ -2958,7 +3036,6 @@ directUploadInput.addEventListener("change", async function(e){
         const file = files[i];
         const link = await uploadImageFile(file);
         if(link){
-            // ⭐ Assign next tracker number
             maxTracker = maxTracker + 1;
             newImages.push({
                 name: file.name.replace(/\.[^/.]+$/, "") || `Image ${i+1}`,
@@ -3121,7 +3198,6 @@ async function checkInitialTracker(){
             }
         }
     }catch(error){}
-    // ⭐ Prefer saved setting over tracker fallback
     if(config.settings.selectedAlbum && config.albums[config.settings.selectedAlbum]){
         config.selectedAlbum = config.settings.selectedAlbum;
     }
@@ -3138,33 +3214,41 @@ async function init(){
     loadGlitchAudio();
     bindEvents();
 
+    console.log("🔍 Checking Firebase for user:", username);
     const existsInFirebase = await firebaseUserExists();
     if(existsInFirebase){
+        console.log("✅ User found in Firebase — loading normally");
         await loadUserDataAndStart();
         return;
     }
+    console.log("❌ Not found in Firebase");
 
+    console.log("🔍 Checking Hostinger...");
     showStatus("🔍 Checking user account...", 4000);
     const hostingerData = await hostingerUserExists();
     if(hostingerData){
+        console.log("✅ User found on Hostinger — migrating...");
         await migrateUserFromHostinger();
         await loadUserDataAndStart();
         return;
     }
+    console.log("❌ Not found on Hostinger");
 
+    console.log("🔍 Checking activation API...");
     const isActive = await checkShahulbreakerActive();
     if(isActive){
+        console.log("✅ Activation API returned 'active' — creating new user with default cartoon album");
         await activateNewUser();
         await loadUserDataAndStart();
         return;
     }
 
+    console.log("❌ Activation API did not return 'active' — redirecting to Google");
     showStatus("❌ Access denied — redirecting...", 2000);
     setTimeout(()=>{ redirectToGoogle(); }, 800);
 }
 
 async function loadUserDataAndStart(){
-    // ⭐ Load settings FIRST so we know the saved album before applying config
     await loadSettings();
     await loadForceTransferSettings();
     await loadSecretButtons();
