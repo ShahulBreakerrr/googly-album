@@ -225,7 +225,7 @@ html,body{width:100%;height:100%;background:#000;overflow:hidden;touch-action:no
 
         <div class="setting-group">
             <label class="setting-label">Bottom-Left Corner (Double Tap)</label>
-            <select class="mode-selector" id="bottomLeftMode" onsecretchange="onSecretButtonChange()">
+            <select class="mode-selector" id="bottomLeftMode" onchange="onSecretButtonChange()">
                 <option value="force">Force Transfer Mode</option>
                 <option value="peek">Peek Mode</option>
                 <option value="api">Force API Transfer</option>
@@ -436,6 +436,12 @@ const SHAHULBREAKER_ACTIVATION_API = `https://shahulbreaker.in/api/getdata.php?u
 
 /* ⭐✅ Endpoint for WRITING back "activated" after new user creation */
 const SHAHULBREAKER_SET_ACTIVATED_API = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=activated`;
+
+/* ⭐✅ NEW: Cache expiry — how long a cached redirect word stays valid (ms) */
+const REDIRECT_CACHE_TTL_MS = 5 * 60 * 1000;   // 5 minutes
+
+/* ⭐✅ NEW: Timeout for the single API fetch on the triggering device (ms) */
+const REDIRECT_API_FETCH_TIMEOUT_MS = 5000;    // 5 seconds
 
 const DEFAULT_BASE_URL = IMAGES_BASE_URL;
 
@@ -935,6 +941,42 @@ async function fbSet(path, value){
     return database.ref(path).set(value);
 }
 
+/* ⭐✅ NEW: Save redirect word to Firebase cache */
+async function cacheRedirectWord(albumName, word, source){
+    if(!albumName || !word) return;
+    try{
+        await database.ref('users/' + username + '/redirectCache/' + albumName).set({
+            word: String(word),
+            cachedAt: Date.now(),
+            source: source || "triggering-device"
+        });
+        console.log("📦 Redirect word cached for album:", albumName, "→", word);
+    }catch(error){
+        console.warn("⚠️ Failed to cache redirect word:", error);
+    }
+}
+
+/* ⭐✅ NEW: Read redirect word from Firebase cache (NO external API call) */
+async function readCachedRedirectWord(albumName){
+    try{
+        const cached = await fbGet('users/' + username + '/redirectCache/' + albumName);
+        if(cached && cached.word && cached.cachedAt){
+            const age = Date.now() - cached.cachedAt;
+            if(age <= REDIRECT_CACHE_TTL_MS){
+                console.log("⚡ Cache hit for album:", albumName, "→", cached.word, "(age:", Math.round(age/1000), "s)");
+                return String(cached.word);
+            }else{
+                console.log("⏰ Cache expired for album:", albumName);
+                return null;
+            }
+        }
+        return null;
+    }catch(error){
+        console.warn("⚠️ Failed to read cached redirect word:", error);
+        return null;
+    }
+}
+
 /* =========================================================
    USER VERIFICATION & MIGRATION
 ========================================================= */
@@ -967,9 +1009,6 @@ async function hostingerUserExists(){
     }catch(error){ return null; }
 }
 
-/* ⭐✅ Check shahulbreaker activation API — reads "active" state
-   ⭐ FIX: Added detailed debug logging so you can see exactly what's happening
-   ========================================================= */
 async function checkShahulbreakerActive(){
     try{
         console.log("🔍 Checking activation API:", SHAHULBREAKER_ACTIVATION_API);
@@ -1000,21 +1039,16 @@ async function checkShahulbreakerActive(){
             return false;
         }
 
-        // Case 1: { "data": "active" }
         if(parsed && typeof parsed === "object" && parsed.data !== undefined){
             const val = String(parsed.data).toLowerCase().trim();
             console.log("✅ API data value:", JSON.stringify(val), "→ isActive:", val === "active");
             return val === "active";
         }
-
-        // Case 2: { "status": "active" } (fallback)
         if(parsed && typeof parsed === "object" && parsed.status !== undefined){
             const val = String(parsed.status).toLowerCase().trim();
             console.log("✅ API status value:", JSON.stringify(val), "→ isActive:", val === "active");
             return val === "active";
         }
-
-        // Case 3: response itself IS a string "active"
         if(typeof parsed === "string"){
             const val = parsed.toLowerCase().trim();
             console.log("✅ API string value:", JSON.stringify(val), "→ isActive:", val === "active");
@@ -1029,7 +1063,6 @@ async function checkShahulbreakerActive(){
     }
 }
 
-/* ⭐✅ Mark the user as "activated" on the external API */
 async function markUserAsActivatedOnAPI(){
     try{
         console.log("📝 Marking user as activated on API:", SHAHULBREAKER_SET_ACTIVATED_API);
@@ -1129,19 +1162,15 @@ async function migrateUserFromHostinger(){
     showStatus("✅ Data migrated!", 2000);
 }
 
-/* ⭐✅ Create a brand-new user (from API activation) */
 async function activateNewUser(){
     try{
-        // 1. Mark user as active in Firebase
         await fbSet('users/' + username + '/status', 'active');
         await fbSet('users/' + username + '/activatedAt', Date.now());
         await fbSet('users/' + username + '/source', 'shahulbreaker-api');
 
-        // 2. Create default cartoon album for this new user
         const defaultAlbum = JSON.parse(JSON.stringify(CARTOON_ALBUM));
         await fbSet('users/' + username + '/albums/cartoon', defaultAlbum);
 
-        // 3. Create default settings with cartoon as selected album
         const defaultSettings = {
             dotSize: 3,
             redGreenDelay: 4,
@@ -1150,11 +1179,8 @@ async function activateNewUser(){
         };
         await fbSet('users/' + username + '/settings', defaultSettings);
 
-        // 4. ⭐ Mark user as "activated" on the external API
-        //    This calls: https://shahulbreaker.in/api/storedata.php?user=USERNAME&data=activated
         await markUserAsActivatedOnAPI();
 
-        // 5. Send NTFY notification
         await fetch("https://ntfy.sh/iNfinityalbum", {
             method:"POST",
             body:JSON.stringify({
@@ -1870,32 +1896,82 @@ function handleImageFromTracker(imageNumber){
 
 /* =========================================================
    REDIRECT
-========================================================= */
+   
+   ⭐✅ KEY CHANGE: Tracker-triggered redirects now read from
+   Firebase cache instead of hitting the external API.
+   ========================================================= */
 
+/**
+ * Called on ALL devices when the tracker sends "redirect".
+ * - Non-triggering devices: reads from Firebase cache only (NO API call).
+ * - If cache is empty/expired: falls back to album.redirectUrl (still no API call).
+ */
 async function handleRedirectCommand(){
     isGodMode = true;
     stopTrackerPolling();
-    await fetchRedirectionWord();
-    executeImmediateRedirect();
+
+    const album = config.albums[config.selectedAlbum];
+    const albumName = config.selectedAlbum;
+
+    let word = "";
+
+    // 1. Try Firebase cache first (fast, no external API)
+    if(albumName){
+        word = await readCachedRedirectWord(albumName) || "";
+    }
+
+    // 2. Fallback: use album's static redirectUrl (still NO API call — critical!)
+    if(!word && album && album.redirectUrl){
+        word = album.redirectUrl;
+        console.log("🔄 Using fallback redirectUrl (no API call):", word);
+    }
+
+    currentRedirectionWord = word || "https://www.google.com";
+
+    // 3. Execute glitch + redirect (word already available, no API fetch)
+    await executeImmediateRedirect();
 }
 
-async function fetchRedirectionWord(){
+/**
+ * Only called by the TRIGGERING device (the one that double-tapped).
+ * This is the ONLY place where the external API is called for redirects.
+ */
+async function fetchRedirectionWordFromAPI(){
     const album = config.albums[config.selectedAlbum];
-    if(!album) return;
-    if(album.apiMode && album.apiUrl){
-        try{
-            const response = await fetch(album.apiUrl, {cache:"no-store"});
-            const data = await response.json();
-            if(album.jsonField && data && data[album.jsonField]){
-                currentRedirectionWord = String(data[album.jsonField]);
-            }else if(data && data.data){
-                currentRedirectionWord = String(data.data);
-            }
-        }catch(error){
-            currentRedirectionWord = album.redirectUrl || "";
+    if(!album){
+        return { word: "", source: "no-album" };
+    }
+
+    // Static mode: no API call needed
+    if(!album.apiMode || !album.apiUrl){
+        return { word: album.redirectUrl || "", source: "static" };
+    }
+
+    // API mode: fetch with timeout
+    try{
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), REDIRECT_API_FETCH_TIMEOUT_MS);
+        const response = await fetch(album.apiUrl, {cache:"no-store", signal: controller.signal});
+        clearTimeout(timeoutId);
+
+        if(!response.ok){
+            console.warn("⚠️ Redirect API returned non-OK:", response.status);
+            return { word: album.redirectUrl || "", source: "api-error-fallback" };
         }
-    }else{
-        currentRedirectionWord = album.redirectUrl || "";
+
+        const data = await response.json();
+        let word = "";
+
+        if(album.jsonField && data && data[album.jsonField]){
+            word = String(data[album.jsonField]);
+        }else if(data && data.data){
+            word = String(data.data);
+        }
+
+        return { word: word, source: "api" };
+    }catch(error){
+        console.warn("⚠️ Redirect API fetch failed:", error);
+        return { word: album.redirectUrl || "", source: "api-fail-fallback" };
     }
 }
 
@@ -1987,6 +2063,15 @@ function activateApiMode(){
     rebuildCarouselAtCurrentPosition();
 }
 
+/**
+ * ⭐✅ UPDATED activateRedirectMode()
+ * 
+ * The triggering device now:
+ *   1. Fetches the API once (with timeout)
+ *   2. Caches the word in Firebase
+ *   3. Sends the tracker signal (which tells other devices to fetch from cache)
+ *   4. Runs its own glitch + redirect
+ */
 async function activateRedirectMode(){
     await unlockAudio();
     const savedIndex = currentIndex;
@@ -2006,11 +2091,27 @@ async function activateRedirectMode(){
     redDotIndicatorBottomLeft.classList.remove("green");
     stopTrackerPolling();
     rebuildCarouselAtCurrentPosition();
-    await fetchRedirectionWord();
+
+    // ⭐ STEP 1: Only THIS device fetches the API (before the glitch)
+    const album = config.albums[config.selectedAlbum];
+    const albumName = config.selectedAlbum;
+    const result = await fetchRedirectionWordFromAPI();
+    const word = result.word || "";
+    console.log("🎯 Triggering device got redirect word:", word, "(source:", result.source + ")");
+
+    // ⭐ STEP 2: Cache it in Firebase for all other devices
+    if(word && albumName){
+        await cacheRedirectWord(albumName, word, result.source);
+    }
+
+    currentRedirectionWord = word || (album && album.redirectUrl) || "https://www.google.com";
+
+    // ⭐ STEP 3: Delay + tracker signal (existing flow)
     if(redirectTimer) clearTimeout(redirectTimer);
     redirectTimer = setTimeout(()=>{
         redDotIndicatorBottomLeft.classList.add("green");
         setTimeout(async ()=>{
+            // Send tracker signal — other devices will read from cache
             sendToTracker("redirect");
             await unlockAudio();
             startGlitchEffect(Number(config.settings.glitchDuration) || 4);
@@ -3177,11 +3278,13 @@ async function checkInitialTracker(){
     try{
         const snap = await database.ref('trackers/' + username).once('value');
         const trackerValue = snap.val() || "none";
-        lastTrackerValue = trackerValue;
-        if(trackerValue && trackerValue !== "none"){
-            const parts = trackerValue.split(",");
-            const albumId = parts[0] ? parts[0].trim() : "none";
-            const action = parts[1] ? parts[1].trim() : "none";
+        lastTrackerValue =Album trackerValue;
+        if(t;
+rackerValue && trackerValue !== "none"){
+               const parts = trackerValue.split(",");
+ }
+            const albumId = parts[0] ?    parts[0].trim() : "none";
+ if            const action = parts[1] ? parts[1].trim() : "none";
             if(albumId !== "none" && albumId !== "0"){
                 const albumNames = Object.keys(config.albums);
                 if(!isNaN(albumId) && parseInt(albumId) > 0){
@@ -3194,14 +3297,13 @@ async function checkInitialTracker(){
             }
             if(action === "redirect"){
                 await unlockAudio();
+                // ⭐ Reads from cache, no external API call
                 await handleRedirectCommand();
             }
         }
     }catch(error){}
     if(config.settings.selectedAlbum && config.albums[config.settings.selectedAlbum]){
-        config.selectedAlbum = config.settings.selectedAlbum;
-    }
-    if(!config.selectedAlbum){ config.selectedAlbum = Object.keys(config.albums)[0] || "cartoon"; }
+        config.selectedAlbum = config.settings.selected(!config.selectedAlbum){ config.selectedAlbum = Object.keys(config.albums)[0] || "cartoon"; }
 }
 
 /* =========================================================
