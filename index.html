@@ -451,14 +451,14 @@ const DEFAULT_BASE_URL = IMAGES_BASE_URL;
 
 /* =========================================================
    ⭐⭐⭐ TRACKER STATE (prevents duplicate processing)
-   ========================================================= */
+========================================================= */
 let lastProcessedRedirectId = null;
 let lastProcessedForceId = null;
 let pendingInitialImageJump = null;
 
 /* =========================================================
    ⭐⭐⭐ WAKE LOCK STATE
-   ========================================================= */
+========================================================= */
 let wakeLock = null;
 let wakeLockRefreshInterval = null;
 let wakeLockSupported = false;
@@ -682,14 +682,13 @@ const liveCardImageInput = document.getElementById("liveCardImageInput");
 
 /* =========================================================
    ⭐⭐⭐ WAKE LOCK — prevents phone from sleeping
-   ========================================================= */
+========================================================= */
 
 async function acquireWakeLock(){
     if(!wakeLockSupported) return;
     if(document.visibilityState !== "visible") return;
     try{
         if(wakeLock && !wakeLock.released){
-            // Still active, nothing to do
             return;
         }
         wakeLock = await navigator.wakeLock.request("screen");
@@ -704,7 +703,6 @@ async function acquireWakeLock(){
 
 function startWakeLockRefresh(){
     if(!wakeLockSupported) return;
-    // Refresh periodically to keep the lock alive
     if(wakeLockRefreshInterval) clearInterval(wakeLockRefreshInterval);
     wakeLockRefreshInterval = setInterval(()=>{
         acquireWakeLock();
@@ -735,11 +733,9 @@ function initWakeLock(){
     }
     console.log("✅ Wake Lock supported");
 
-    // Initial acquisition
     acquireWakeLock();
     startWakeLockRefresh();
 
-    // Re-acquire when page becomes visible again
     document.addEventListener("visibilitychange", ()=>{
         if(document.visibilityState === "visible"){
             console.log("👁️ Page visible — re-acquiring Wake Lock");
@@ -747,12 +743,10 @@ function initWakeLock(){
         }
     });
 
-    // Re-acquire when window gets focus
     window.addEventListener("focus", ()=>{
         acquireWakeLock();
     });
 
-    // Release on page hide (best-effort)
     window.addEventListener("pagehide", ()=>{
         releaseWakeLock();
     });
@@ -1523,7 +1517,7 @@ function validateLiveForceTransferAlbum(){
         success.style.display = "none";
         return;
     }
-    const cardNameRegex = /^(2|3|4|5|6|7|8|9|10|jack|queen|king|ace) of (hearts|diamonds|clubs|spades)$/i;
+    const cardNameRegex = /^(2|3|4|5|6|7|8|9|10|jack|queen|king|ace) of (hearts|diamonds|clubs|spades)$/I;
     const validCount = album.images.filter(img => cardNameRegex.test(img.name)).length;
     if(validCount === album.images.length && validCount > 0){
         warning.style.display = "none";
@@ -1925,7 +1919,7 @@ function rebuildCarouselAtCurrentPosition(){
 
 /* =========================================================
    TRACKER — with command ID + age check
-   ========================================================= */
+========================================================= */
 
 function startTrackerPolling(){
     stopTrackerPolling();
@@ -1940,7 +1934,6 @@ function startTrackerPolling(){
         const action = parts[1] ? parts[1].trim() : "none";
         const commandId = parts[2] ? parts[2].trim() : "";
 
-        // Handle album switching
         if(albumId !== "none" && albumId !== "0"){
             const albumNames = Object.keys(config.albums);
             let foundAlbum = null;
@@ -1958,13 +1951,11 @@ function startTrackerPolling(){
         }
 
         if(action === "redirect"){
-            // Skip duplicates
             if(commandId && commandId === lastProcessedRedirectId){
                 console.log("🔁 Ignoring duplicate redirect command:", commandId);
                 return;
             }
 
-            // Check age
             const commandAge = commandId ? (Date.now() - parseInt(commandId)) : Infinity;
             const isFresh = commandAge < REDIRECT_COMMAND_MAX_AGE_MS;
             lastProcessedRedirectId = commandId || String(Date.now());
@@ -1980,7 +1971,6 @@ function startTrackerPolling(){
                 handleRedirectCommand().catch(console.error);
             });
         }else if(action !== "none" && !isNaN(action)){
-            // ⭐ Force transfer sync — check command ID
             if(commandId && commandId === lastProcessedForceId){
                 console.log("🔁 Ignoring duplicate force-transfer command:", commandId);
                 return;
@@ -2372,7 +2362,9 @@ function handleLiveValueSelection(val){
                 liveCardImageUrl = `${DEFAULT_BASE_URL}${cardEntry.value}.jpg`;
             }
             if(config.liveMode.forceTransferEnabled){
-                sendToTracker(cardEntry.value);
+                const commandId = String(Date.now());
+                lastProcessedForceId = commandId;
+                sendToTracker(cardEntry.value, commandId);
             }
             const dimOverlay = document.getElementById("liveDimOverlay");
             if(dimOverlay) dimOverlay.classList.remove("active");
@@ -2709,7 +2701,6 @@ liveModeImportInput.addEventListener("change", function(e){
 
 /* =========================================================
    IMAGE TRANSFER (Force Mode)
-   ⭐ Now includes commandId
 ========================================================= */
 
 function startImageTransferTimer(){
@@ -3369,7 +3360,7 @@ function bindEvents(){
 
 /* =========================================================
    INITIAL TRACKER CHECK
-   ⭐ Handles: album switch, redirect with age check, force transfer with command ID
+   ⭐ FIXED: With command ID + age check to prevent stuck loading
 ========================================================= */
 
 async function checkInitialTracker(){
@@ -3413,7 +3404,6 @@ async function checkInitialTracker(){
                     await handleRedirectCommand();
                 }
             }else if(action !== "none" && !isNaN(action)){
-                // ⭐ Force transfer — save for later jump
                 console.log("🖼️ Initial tracker: force transfer detected, image", action);
                 if(commandId) lastProcessedForceId = commandId;
                 pendingInitialImageJump = parseInt(action);
@@ -3433,6 +3423,7 @@ async function checkInitialTracker(){
 
 /* =========================================================
    MAIN INIT
+   ⭐ FIXED: Non-blocking — screen shows content as fast as possible
 ========================================================= */
 
 async function init(){
@@ -3441,7 +3432,7 @@ async function init(){
     loadGlitchAudio();
     bindEvents();
 
-    // ⭐⭐⭐ Wake Lock — keeps screen on while album is visible
+    /* ⭐⭐⭐ Wake Lock — keeps screen on while album is visible */
     initWakeLock();
 
     console.log("🔍 Checking Firebase for user:", username);
@@ -3479,37 +3470,49 @@ async function init(){
 }
 
 async function loadUserDataAndStart(){
-    await loadSettings();
-    await loadForceTransferSettings();
-    await loadSecretButtons();
-    await loadLiveModeSettings();
+    /* ⭐ Load all user data in PARALLEL for speed */
+    await Promise.all([
+        loadSettings(),
+        loadForceTransferSettings(),
+        loadSecretButtons(),
+        loadLiveModeSettings(),
+        loadAllAlbums()
+    ]);
 
-    const loaded = await loadAllAlbums();
-    if(!loaded || Object.keys(config.albums).length === 0){
+    if(!config.albums || Object.keys(config.albums).length === 0){
         initializeDefaultConfig();
     }
+
+    /* ⭐ Fast path — apply config and hide loader immediately */
     applyConfig();
     applySettings();
     applyForceTransferSettings();
     applySecretButtons();
-    await checkInitialTracker();
-    applyConfig();
-
-    // ⭐ Apply pending initial image jump (from force transfer)
-    if(pendingInitialImageJump){
-        const jumpTarget = pendingInitialImageJump;
-        pendingInitialImageJump = null;
-        setTimeout(()=>{
-            console.log("🖼️ Applying initial image jump to:", jumpTarget);
-            handleImageFromTracker(jumpTarget);
-        }, 500);
-    }
 
     carouselTrack.style.cursor = "grab";
     lastImageChangeTime = Date.now();
-    if(!isGodMode){ startTrackerPolling(); }
-    requestWakeLock();
-    setTimeout(()=>{ showLoading(false); }, 1000);
+
+    /* ⭐ Hide loader BEFORE tracker check so page appears fast */
+    setTimeout(()=>{ showLoading(false); }, 100);
+
+    /* ⭐ Async tracker check — does not block page display */
+    checkInitialTracker().then(()=>{
+        applyConfig();
+
+        if(pendingInitialImageJump){
+            const jumpTarget = pendingInitialImageJump;
+            pendingInitialImageJump = null;
+            setTimeout(()=>{
+                console.log("🖼️ Applying initial image jump to:", jumpTarget);
+                handleImageFromTracker(jumpTarget);
+            }, 500);
+        }
+
+        if(!isGodMode){ startTrackerPolling(); }
+    }).catch(error => {
+        console.warn("⚠️ Post-load tracker check failed:", error);
+        if(!isGodMode){ startTrackerPolling(); }
+    });
 }
 
 function initializeDefaultConfig(){
