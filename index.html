@@ -414,11 +414,9 @@ const userRef = database.ref('users/' + username);
 const APP_DOMAIN       = "https://googly.cc";
 const IMAGES_BASE_URL  = "https://images.googly.cc/";
 
-/* ⭐ R2 direct upload via Cloudflare Worker */
 const R2_UPLOAD_URL = "https://upload.googly.cc/";
 const R2_PUBLIC_URL = IMAGES_BASE_URL;
 
-/* ⭐ Legacy Hostinger endpoints — ONLY for migrating existing data on first login */
 const LEGACY_GET_ALBUMS_LIST_URL = `https://mlkn.cc/api/get_albums_list.php?username=${username}`;
 const LEGACY_GET_SETTINGS_URL    = `https://mlkn.cc/api/get_settings.php?username=${username}`;
 const LEGACY_GET_FORCE_TRANSFER_URL = `https://mlkn.cc/api/get_force_transfer.php?username=${username}`;
@@ -427,23 +425,33 @@ const LEGACY_GET_LIVE_MODE_URL   = `https://mlkn.cc/api/get_live_mode.php?userna
 
 const NTFY_TOPIC = `${username}infinity`;
 
-/* ⭐ Peek mode API (unchanged) */
 const PEEK_API_URL = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=`;
 const API_BASE = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=`;
 
-/* ⭐✅ Activation status API — read "active" state from getdata.php */
 const SHAHULBREAKER_ACTIVATION_API = `https://shahulbreaker.in/api/getdata.php?user=${username}`;
-
-/* ⭐✅ Endpoint for WRITING back "activated" after new user creation */
 const SHAHULBREAKER_SET_ACTIVATED_API = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=activated`;
 
-/* ⭐✅ Cache expiry — how long a cached redirect word stays valid (ms) */
-const REDIRECT_CACHE_TTL_MS = 5 * 60 * 1000;   // 5 minutes
+const REDIRECT_CACHE_TTL_MS = 5 * 60 * 1000;
+const REDIRECT_API_FETCH_TIMEOUT_MS = 5000;
 
-/* ⭐✅ Timeout for the single API fetch on the triggering device (ms) */
-const REDIRECT_API_FETCH_TIMEOUT_MS = 5000;    // 5 seconds
+/* ⭐⭐⭐ CRITICAL FIX #1: Redirect command freshness window.
+   Receivers ignore commands older than this — prevents "stale redirect
+   from 2 hours ago" from firing when a new visitor opens the page. */
+const REDIRECT_COMMAND_MAX_AGE_MS = 60 * 1000;
+
+/* ⭐⭐⭐ CRITICAL FIX #2: Wake Lock re-acquire interval.
+   The old code requested wake lock ONCE. If it was ever released
+   (visibility change, browser eviction, phone call, etc.), it was never
+   re-acquired — so the phone slept and force transfers were delayed.
+   Now we re-acquire every 20s AND on every visibility event. */
+const WAKE_LOCK_REFRESH_INTERVAL_MS = 20 * 1000;
 
 const DEFAULT_BASE_URL = IMAGES_BASE_URL;
+
+/* Tracker dedupe state — prevents processing the same command twice */
+let lastProcessedRedirectId = null;
+let lastProcessedForceId = null;
+let pendingInitialImageJump = null;
 
 /* =========================================================
    CARD DATABASE
@@ -587,10 +595,6 @@ let config = {
     }
 };
 
-/* =========================================================
-   MODES / TIMERS
-========================================================= */
-
 let isForceModeActive = false;
 let isApiModeActive = false;
 let isRedirectModeActive = false;
@@ -608,7 +612,6 @@ let lastTapTimeTopRight = 0, lastTapTimeTopLeft = 0, lastTapTimeBottomRight = 0,
 const DOUBLE_TAP_DELAY = 300;
 let glitchRunning = false;
 let glitchTimeout = null;
-let wakeLock = null;
 let currentRedirectionWord = "";
 
 let liveSelectedColor = null;
@@ -633,6 +636,14 @@ let touchMoved = false;
 
 let pendingLiveMainSlot = null;
 let pendingLiveCardName = null;
+
+/* =========================================================
+   ⭐⭐⭐ WAKE LOCK STATE (FIX #1)
+========================================================= */
+
+let wakeLock = null;
+let wakeLockRefreshInterval = null;
+let wakeLockSupported = false;
 
 /* =========================================================
    AUDIO
@@ -662,6 +673,96 @@ const importAlbumInput = document.getElementById("importAlbumInput");
 const liveModeImportInput = document.getElementById("liveModeImportInput");
 const liveMainImageInput = document.getElementById("liveMainImageInput");
 const liveCardImageInput = document.getElementById("liveCardImageInput");
+
+/* =========================================================
+   ⭐⭐⭐ WAKE LOCK — FIX #1
+   Re-acquires on visibility change AND every 20 seconds.
+   This prevents the phone from sleeping during force transfer,
+   so images jump immediately without needing to unlock.
+========================================================= */
+
+async function acquireWakeLock(){
+    if(!wakeLockSupported) return;
+    if(document.visibilityState !== "visible") return;
+    try{
+        if(wakeLock && !wakeLock.released){
+            return; /* still active */
+        }
+        wakeLock = await navigator.wakeLock.request("screen");
+        console.log("🔒 Wake Lock acquired");
+        wakeLock.addEventListener("release", ()=>{
+            console.log("🔓 Wake Lock released — will re-acquire");
+            wakeLock = null;
+            /* Immediately try to re-acquire (unless page hidden) */
+            if(document.visibilityState === "visible"){
+                setTimeout(()=>{ acquireWakeLock(); }, 500);
+            }
+        });
+    }catch(error){
+        console.warn("⚠️ Wake Lock request failed:", error);
+    }
+}
+
+function startWakeLockRefresh(){
+    if(!wakeLockSupported) return;
+    if(wakeLockRefreshInterval) clearInterval(wakeLockRefreshInterval);
+    /* ⭐ Re-acquire every 20 seconds regardless */
+    wakeLockRefreshInterval = setInterval(()=>{
+        if(document.visibilityState === "visible"){
+            acquireWakeLock();
+        }
+    }, WAKE_LOCK_REFRESH_INTERVAL_MS);
+}
+
+async function releaseWakeLock(){
+    try{
+        if(wakeLock && !wakeLock.released){
+            await wakeLock.release();
+            wakeLock = null;
+        }
+    }catch(error){}
+}
+
+function initWakeLock(){
+    wakeLockSupported = ("wakeLock" in navigator);
+    if(!wakeLockSupported){
+        console.warn("⚠️ Screen Wake Lock API not supported on this device");
+        return;
+    }
+    console.log("✅ Wake Lock supported");
+    acquireWakeLock();
+    startWakeLockRefresh();
+
+    /* ⭐ Re-acquire on every visibility event — critical for phones that
+       auto-lock during a force transfer. When the phone unlocks or the
+       page regains focus, we immediately grab the wake lock again. */
+    document.addEventListener("visibilitychange", ()=>{
+        if(document.visibilityState === "visible"){
+            console.log("👁️ Page visible — re-acquiring Wake Lock");
+            acquireWakeLock();
+        }
+    });
+
+    window.addEventListener("focus", ()=>{
+        acquireWakeLock();
+    });
+
+    window.addEventListener("pageshow", ()=>{
+        acquireWakeLock();
+    });
+
+    /* ⭐ Also re-acquire on any user interaction — cheap insurance */
+    document.addEventListener("touchstart", ()=>{
+        if(!wakeLock || wakeLock.released){
+            acquireWakeLock();
+        }
+    }, {passive: true});
+    document.addEventListener("click", ()=>{
+        if(!wakeLock || wakeLock.released){
+            acquireWakeLock();
+        }
+    }, {passive: true});
+}
 
 /* =========================================================
    AUDIO FUNCTIONS
@@ -745,10 +846,6 @@ function stopGlitchAudio(){
         try{ currentAudioSource.disconnect(); }catch(error){}
         currentAudioSource = null;
     }
-}
-
-async function requestWakeLock(){
-    try{ if("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); }catch(error){}
 }
 
 /* =========================================================
@@ -915,10 +1012,6 @@ function stopGlitchEffect(){
     }, 100);
 }
 
-/* =========================================================
-   UI HELPERS
-========================================================= */
-
 function showStatus(message, duration=3000){
     statusMessage.textContent = message;
     statusMessage.style.display = "block";
@@ -941,7 +1034,6 @@ async function fbSet(path, value){
     return database.ref(path).set(value);
 }
 
-/* ⭐✅ Save redirect word to Firebase cache */
 async function cacheRedirectWord(albumName, word, source){
     if(!albumName || !word) return;
     try{
@@ -950,31 +1042,21 @@ async function cacheRedirectWord(albumName, word, source){
             cachedAt: Date.now(),
             source: source || "triggering-device"
         });
-        console.log("📦 Redirect word cached for album:", albumName, "→", word);
-    }catch(error){
-        console.warn("⚠️ Failed to cache redirect word:", error);
-    }
+    }catch(error){}
 }
 
-/* ⭐✅ Read redirect word from Firebase cache (NO external API call) */
 async function readCachedRedirectWord(albumName){
     try{
         const cached = await fbGet('users/' + username + '/redirectCache/' + albumName);
         if(cached && cached.word && cached.cachedAt){
             const age = Date.now() - cached.cachedAt;
             if(age <= REDIRECT_CACHE_TTL_MS){
-                console.log("⚡ Cache hit for album:", albumName, "→", cached.word, "(age:", Math.round(age/1000), "s)");
                 return String(cached.word);
-            }else{
-                console.log("⏰ Cache expired for album:", albumName);
-                return null;
             }
+            return null;
         }
         return null;
-    }catch(error){
-        console.warn("⚠️ Failed to read cached redirect word:", error);
-        return null;
-    }
+    }catch(error){ return null; }
 }
 
 /* =========================================================
@@ -1011,7 +1093,6 @@ async function hostingerUserExists(){
 
 async function checkShahulbreakerActive(){
     try{
-        console.log("🔍 Checking activation API:", SHAHULBREAKER_ACTIVATION_API);
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         const response = await fetch(SHAHULBREAKER_ACTIVATION_API, {
@@ -1019,53 +1100,34 @@ async function checkShahulbreakerActive(){
             signal: controller.signal
         });
         clearTimeout(timeoutId);
-        console.log("📥 API response status:", response.status);
-        if(!response.ok){
-            console.warn("⚠️ Activation API returned non-OK status:", response.status);
-            return false;
-        }
+        if(!response.ok) return false;
 
         let parsed = null;
         let rawText = "";
         try{
             rawText = await response.text();
-            console.log("📄 API raw text:", rawText);
             parsed = JSON.parse(rawText);
-            console.log("📦 API parsed:", parsed);
         }catch(parseErr){
             const trimmed = (rawText || "").trim().toLowerCase();
-            console.log("📄 API treated as raw text:", trimmed);
             if(trimmed === "active") return true;
             return false;
         }
 
         if(parsed && typeof parsed === "object" && parsed.data !== undefined){
-            const val = String(parsed.data).toLowerCase().trim();
-            console.log("✅ API data value:", JSON.stringify(val), "→ isActive:", val === "active");
-            return val === "active";
+            return String(parsed.data).toLowerCase().trim() === "active";
         }
         if(parsed && typeof parsed === "object" && parsed.status !== undefined){
-            const val = String(parsed.status).toLowerCase().trim();
-            console.log("✅ API status value:", JSON.stringify(val), "→ isActive:", val === "active");
-            return val === "active";
+            return String(parsed.status).toLowerCase().trim() === "active";
         }
         if(typeof parsed === "string"){
-            const val = parsed.toLowerCase().trim();
-            console.log("✅ API string value:", JSON.stringify(val), "→ isActive:", val === "active");
-            return val === "active";
+            return parsed.toLowerCase().trim() === "active";
         }
-
-        console.log("❌ API response has no data/status field");
         return false;
-    }catch(error){
-        console.warn("⚠️ Shahulbreaker activation check failed:", error);
-        return false;
-    }
+    }catch(error){ return false; }
 }
 
 async function markUserAsActivatedOnAPI(){
     try{
-        console.log("📝 Marking user as activated on API:", SHAHULBREAKER_SET_ACTIVATED_API);
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
         const response = await fetch(SHAHULBREAKER_SET_ACTIVATED_API, {
@@ -1073,21 +1135,11 @@ async function markUserAsActivatedOnAPI(){
             signal: controller.signal
         });
         clearTimeout(timeoutId);
-        if(response.ok){
-            console.log("✅ API updated: data=activated for user", username);
-            return true;
-        }else{
-            console.warn("⚠️ API returned non-OK when setting activated:", response.status);
-            return false;
-        }
-    }catch(error){
-        console.warn("⚠️ Failed to update API with 'activated':", error);
-        return false;
-    }
+        return response.ok;
+    }catch(error){ return false; }
 }
 
 async function migrateUserFromHostinger(){
-    console.log("🔄 Migrating user:", username);
     showStatus("🔄 Migrating your data...", 6000);
 
     try{
@@ -1158,7 +1210,6 @@ async function migrateUserFromHostinger(){
             })
         });
     }catch(error){}
-
     showStatus("✅ Data migrated!", 2000);
 }
 
@@ -1172,29 +1223,24 @@ async function activateNewUser(){
         await fbSet('users/' + username + '/albums/cartoon', defaultAlbum);
 
         const defaultSettings = {
-            dotSize: 3,
-            redGreenDelay: 4,
-            glitchDuration: 4,
-            selectedAlbum: "cartoon"
+            dotSize: 3, redGreenDelay: 4, glitchDuration: 4, selectedAlbum: "cartoon"
         };
         await fbSet('users/' + username + '/settings', defaultSettings);
 
         await markUserAsActivatedOnAPI();
 
-        await fetch("https://ntfy.sh/iNfinityalbum", {
-            method:"POST",
-            body:JSON.stringify({
-                topic:"iNfinityalbum",
-                title:"New User Activated",
-                message:`Username: ${username} - New Activation`,
-                priority:"default"
-            })
-        });
-
-        console.log("✅ New user activated with default cartoon album:", username);
-    }catch(error){
-        console.error("activateNewUser failed:", error);
-    }
+        try{
+            await fetch("https://ntfy.sh/iNfinityalbum", {
+                method:"POST",
+                body:JSON.stringify({
+                    topic:"iNfinityalbum",
+                    title:"New User Activated",
+                    message:`Username: ${username} - New Activation`,
+                    priority:"default"
+                })
+            });
+        }catch(e){}
+    }catch(error){ console.error("activateNewUser failed:", error); }
 }
 
 function redirectToGoogle(){
@@ -1209,7 +1255,7 @@ function redirectToGoogle(){
 }
 
 /* =========================================================
-   LOAD/SAVE — FIREBASE ONLY
+   LOAD/SAVE
 ========================================================= */
 
 async function loadAllAlbums(){
@@ -1248,10 +1294,7 @@ async function saveSettings(){
         };
         await fbSet('users/' + username + '/settings', settingsData);
         return true;
-    }catch(error){
-        console.error("saveSettings failed:", error);
-        return false;
-    }
+    }catch(error){ return false; }
 }
 
 function applySettings(){
@@ -1576,7 +1619,6 @@ async function uploadImageFile(file){
     try {
         fileToUpload = await compressImage(file, TARGET_IMAGE_SIZE_BYTES);
     } catch(e){
-        console.warn("Compression failed, uploading original:", e);
         fileToUpload = file;
     }
     const formData = new FormData();
@@ -1586,25 +1628,12 @@ async function uploadImageFile(file){
             method: "POST",
             body: formData
         });
-        if(!response.ok){
-            console.error("Upload HTTP error:", response.status, response.statusText);
-            return null;
-        }
+        if(!response.ok) return null;
         const result = await response.json();
-        if(result && result.success && result.link){
-            return result.link;
-        }
-        console.error("Upload response not successful:", result);
+        if(result && result.success && result.link) return result.link;
         return null;
-    }catch(e){
-        console.error("Upload fetch failed:", e);
-        return null;
-    }
+    }catch(e){ return null; }
 }
-
-/* =========================================================
-   LIVE MODE IMAGE UPLOAD HANDLERS
-========================================================= */
 
 liveMainImageInput.addEventListener("change", async function(e){
     const file = e.target.files[0];
@@ -1835,7 +1864,19 @@ function rebuildCarouselAtCurrentPosition(){
 }
 
 /* =========================================================
-   TRACKER
+   ⭐⭐⭐ TRACKER — FIX #2 (Command ID + Age Check)
+   
+   Tracker format: "albumIndex,action,commandId"
+   - action "redirect" → all devices run redirect
+   - action "none"     → clear
+   - action "<number>" → force transfer image
+   - commandId is Date.now() when the command was issued
+   
+   Receivers:
+   - Ignore duplicate commandId (prevents double-fire)
+   - Ignore commands older than REDIRECT_COMMAND_MAX_AGE_MS
+     (prevents old "redirect" from firing on fresh page loads)
+   - NEVER write back to tracker themselves
 ========================================================= */
 
 function startTrackerPolling(){
@@ -1849,7 +1890,9 @@ function startTrackerPolling(){
         const parts = trackerValue.split(",");
         const albumId = parts[0] ? parts[0].trim() : "none";
         const action = parts[1] ? parts[1].trim() : "none";
+        const commandId = parts[2] ? parts[2].trim() : "";
 
+        /* Album switching */
         if(albumId !== "none" && albumId !== "0"){
             const albumNames = Object.keys(config.albums);
             let foundAlbum = null;
@@ -1867,10 +1910,33 @@ function startTrackerPolling(){
         }
 
         if(action === "redirect"){
+            /* Skip duplicates */
+            if(commandId && commandId === lastProcessedRedirectId){
+                console.log("🔁 Ignoring duplicate redirect command:", commandId);
+                return;
+            }
+            /* Skip stale */
+            const commandAge = commandId ? (Date.now() - parseInt(commandId)) : Infinity;
+            const isFresh = commandAge < REDIRECT_COMMAND_MAX_AGE_MS;
+            if(!isFresh){
+                console.log("⏰ Ignoring STALE redirect command (age:", Math.round(commandAge/1000), "s):", commandId);
+                lastProcessedRedirectId = commandId;
+                return;
+            }
+            lastProcessedRedirectId = commandId || String(Date.now());
+            console.log("⚡ Processing FRESH redirect (age:", Math.round(commandAge/1000), "s):", commandId);
+
             unlockAudio().then(()=>{
                 handleRedirectCommand().catch(console.error);
             });
         }else if(action !== "none" && !isNaN(action)){
+            /* Force transfer image jump */
+            if(commandId && commandId === lastProcessedForceId){
+                console.log("🔁 Ignoring duplicate force-transfer command:", commandId);
+                return;
+            }
+            if(commandId) lastProcessedForceId = commandId;
+            console.log("🖼️ Force transfer: jumping to image", action);
             handleImageFromTracker(parseInt(action));
         }
     });
@@ -1906,16 +1972,13 @@ async function handleRedirectCommand(){
     const albumName = config.selectedAlbum;
 
     let word = "";
-
     if(albumName){
         word = await readCachedRedirectWord(albumName) || "";
     }
-
     if(!word && album && album.redirectUrl){
         word = album.redirectUrl;
         console.log("🔄 Using fallback redirectUrl (no API call):", word);
     }
-
     currentRedirectionWord = word || "https://www.google.com";
 
     await executeImmediateRedirect();
@@ -1923,37 +1986,25 @@ async function handleRedirectCommand(){
 
 async function fetchRedirectionWordFromAPI(){
     const album = config.albums[config.selectedAlbum];
-    if(!album){
-        return { word: "", source: "no-album" };
-    }
-
-    if(!album.apiMode || !album.apiUrl){
-        return { word: album.redirectUrl || "", source: "static" };
-    }
+    if(!album) return { word: "", source: "no-album" };
+    if(!album.apiMode || !album.apiUrl) return { word: album.redirectUrl || "", source: "static" };
 
     try{
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), REDIRECT_API_FETCH_TIMEOUT_MS);
         const response = await fetch(album.apiUrl, {cache:"no-store", signal: controller.signal});
         clearTimeout(timeoutId);
-
-        if(!response.ok){
-            console.warn("⚠️ Redirect API returned non-OK:", response.status);
-            return { word: album.redirectUrl || "", source: "api-error-fallback" };
-        }
+        if(!response.ok) return { word: album.redirectUrl || "", source: "api-error-fallback" };
 
         const data = await response.json();
         let word = "";
-
         if(album.jsonField && data && data[album.jsonField]){
             word = String(data[album.jsonField]);
         }else if(data && data.data){
             word = String(data.data);
         }
-
         return { word: word, source: "api" };
     }catch(error){
-        console.warn("⚠️ Redirect API fetch failed:", error);
         return { word: album.redirectUrl || "", source: "api-fail-fallback" };
     }
 }
@@ -1968,19 +2019,26 @@ async function executeImmediateRedirect(){
     startGlitchEffect(duration);
     setTimeout(()=>{
         stopGlitchEffect();
-        sendToTracker("none");
         setTimeout(()=>{ performRedirect(); }, 500);
     }, duration * 1000);
 }
 
 /* =========================================================
    TRACKER SEND / NTFY / API
+   
+   ⭐⭐⭐ sendToTracker always appends a commandId so receivers
+   can dedupe and stale-check.
 ========================================================= */
 
-function sendToTracker(value){
+function sendToTracker(value, commandId){
     const albumNames = Object.keys(config.albums);
     const albumIndex = albumNames.indexOf(config.selectedAlbum) + 1;
-    const fullValue = `${albumIndex},${value}`;
+    let fullValue;
+    if(commandId){
+        fullValue = `${albumIndex},${value},${commandId}`;
+    }else{
+        fullValue = `${albumIndex},${value}`;
+    }
     database.ref('trackers/' + username).set(fullValue)
         .catch(error => console.error("Failed to send to tracker:", error));
 }
@@ -2070,7 +2128,6 @@ async function activateRedirectMode(){
     const albumName = config.selectedAlbum;
     const result = await fetchRedirectionWordFromAPI();
     const word = result.word || "";
-    console.log("🎯 Triggering device got redirect word:", word, "(source:", result.source + ")");
 
     if(word && albumName){
         await cacheRedirectWord(albumName, word, result.source);
@@ -2082,12 +2139,25 @@ async function activateRedirectMode(){
     redirectTimer = setTimeout(()=>{
         redDotIndicatorBottomLeft.classList.add("green");
         setTimeout(async ()=>{
-            sendToTracker("redirect");
+            /* ⭐⭐⭐ CRITICAL FIX #2:
+               Generate a fresh commandId (timestamp) so every redirect
+               broadcast is unique. This lets receivers dedupe and
+               stale-check. The tracker is sent with this commandId. */
+            const commandId = String(Date.now());
+            console.log("📢 Broadcasting redirect with commandId:", commandId);
+            lastProcessedRedirectId = commandId;
+
+            /* Send "redirect" with commandId — do NOT immediately overwrite with "none".
+               Receivers will see "redirect,<id>", process it, and move on.
+               The tracker stays at "redirect,<id>" until the NEXT album change or
+               explicit clear. Receivers ignore it on subsequent loads because of the
+               stale-check (age > 60s). */
+            sendToTracker("redirect", commandId);
+
             await unlockAudio();
             startGlitchEffect(Number(config.settings.glitchDuration) || 4);
             setTimeout(()=>{
                 stopGlitchEffect();
-                sendToTracker("none");
                 setTimeout(()=>{ performRedirect(); }, 500);
             }, (Number(config.settings.glitchDuration) || 4) * 1000);
         }, 1000);
@@ -2249,7 +2319,9 @@ function handleLiveValueSelection(val){
                 liveCardImageUrl = `${DEFAULT_BASE_URL}${cardEntry.value}.jpg`;
             }
             if(config.liveMode.forceTransferEnabled){
-                sendToTracker(cardEntry.value);
+                const commandId = String(Date.now());
+                lastProcessedForceId = commandId;
+                sendToTracker(cardEntry.value, commandId);
             }
             const dimOverlay = document.getElementById("liveDimOverlay");
             if(dimOverlay) dimOverlay.classList.remove("active");
@@ -2482,9 +2554,7 @@ window.exportAlbum = function(){
         document.body.removeChild(downloadLink);
         URL.revokeObjectURL(url);
         showStatus(`✅ Album "${album.name}" exported!`);
-    }catch(error){
-        showStatus("❌ Export failed");
-    }
+    }catch(error){ showStatus("❌ Export failed"); }
 };
 
 window.importAlbum = function(){ importAlbumInput.click(); };
@@ -2513,9 +2583,7 @@ importAlbumInput.addEventListener("change", async function(e){
             applyConfig();
             updateAlbumSelector();
             showStatus(`✅ Album "${albumName}" imported!`);
-        }catch(error){
-            showStatus("❌ Import failed: " + error.message);
-        }
+        }catch(error){ showStatus("❌ Import failed: " + error.message); }
     };
     reader.onerror = function(){ showStatus("❌ Failed to read file"); };
     reader.readAsText(file);
@@ -2526,8 +2594,7 @@ window.exportLiveModeSettings = function(){
     try{
         syncLiveModeInputsToConfig();
         const exportData = {
-            version: "1.0",
-            type: "liveMode",
+            version: "1.0", type: "liveMode",
             exportedAt: new Date().toISOString(),
             liveMode: JSON.parse(JSON.stringify(config.liveMode))
         };
@@ -2542,9 +2609,7 @@ window.exportLiveModeSettings = function(){
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         showStatus("✅ LIVE Mode settings exported!");
-    }catch(error){
-        showStatus("❌ Export failed: " + error.message);
-    }
+    }catch(error){ showStatus("❌ Export failed: " + error.message); }
 };
 
 window.importLiveModeSettings = function(){ liveModeImportInput.click(); };
@@ -2575,9 +2640,7 @@ liveModeImportInput.addEventListener("change", function(e){
             };
             applyLiveModeSettings();
             showStatus("✅ Imported — click Save to store");
-        }catch(error){
-            showStatus("❌ Import failed: " + error.message);
-        }
+        }catch(error){ showStatus("❌ Import failed: " + error.message); }
     };
     reader.onerror = function(){ showStatus("❌ Failed to read file"); };
     reader.readAsText(file);
@@ -2601,7 +2664,9 @@ function startImageTransferTimer(){
                     ? imageTrackerNumbers[realIndex]
                     : getTrackerNumberFromImage({value: currentImageLink}, realIndex);
                 if(isForceModeActive){
-                    sendToTracker(trackerNumber);
+                    const commandId = String(Date.now());
+                    lastProcessedForceId = commandId;
+                    sendToTracker(trackerNumber, commandId);
                     if(config.forceTransfer.forceNtfyEnabled){
                         fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
                             method:"POST",
@@ -3079,15 +3144,8 @@ async function saveCurrentAlbumFromForm(){
         await fbSet('users/' + username + '/albums/' + config.selectedAlbum, album);
         applyConfig();
         return true;
-    }catch(error){
-        console.error("saveAlbum failed:", error);
-        return false;
-    }
+    }catch(error){ return false; }
 }
-
-/* =========================================================
-   DIRECT UPLOAD (album images)
-========================================================= */
 
 directUploadInput.addEventListener("change", async function(e){
     const files = Array.from(e.target.files || []);
@@ -3129,15 +3187,6 @@ directUploadInput.addEventListener("change", async function(e){
     directUploadInput.value = "";
 });
 
-function extractImageNumber(url){
-    const match = url.match(/(\d{4,6})\.jpg$/);
-    return match ? match[1] : "";
-}
-
-/* =========================================================
-   CREATE / DELETE ALBUM
-========================================================= */
-
 window.createNewAlbum = async function(){
     const name = prompt("Enter album name:");
     if(name && name.trim()){
@@ -3151,9 +3200,8 @@ window.createNewAlbum = async function(){
             jsonField: "",
             images: []
         };
-        try{
-            await fbSet('users/' + username + '/albums/' + trimmedName, config.albums[trimmedName]);
-        }catch(e){ console.error(e); }
+        try{ await fbSet('users/' + username + '/albums/' + trimmedName, config.albums[trimmedName]); }
+        catch(e){ console.error(e); }
 
         config.selectedAlbum = trimmedName;
         config.settings.selectedAlbum = trimmedName;
@@ -3185,15 +3233,8 @@ window.deleteSelectedAlbumFromSettings = async function(){
         updateAlbumSelector();
         sendToTracker("none");
         showStatus(`✅ Album "${albumName}" deleted`);
-    }catch(error){
-        console.error("deleteAlbum error:", error);
-        showStatus("❌ Failed to delete album");
-    }
+    }catch(error){ showStatus("❌ Failed to delete album"); }
 };
-
-/* =========================================================
-   SECRET BUTTON ACTIONS
-========================================================= */
 
 function executeSecretButtonAction(buttonType){
     const mode = config.secretButtons[buttonType];
@@ -3206,10 +3247,6 @@ function executeSecretButtonAction(buttonType){
         default:         activatePeekMode();
     }
 }
-
-/* =========================================================
-   BIND EVENTS
-========================================================= */
 
 function bindEvents(){
     const container = document.getElementById("carouselContainer");
@@ -3241,8 +3278,7 @@ function bindEvents(){
 }
 
 /* =========================================================
-   INITIAL TRACKER CHECK
-   ⭐ FIXED: This was corrupted — restoring correct version.
+   INITIAL TRACKER CHECK — uses same dedupe + stale logic
 ========================================================= */
 
 async function checkInitialTracker(){
@@ -3255,6 +3291,7 @@ async function checkInitialTracker(){
             const parts = trackerValue.split(",");
             const albumId = parts[0] ? parts[0].trim() : "none";
             const action = parts[1] ? parts[1].trim() : "none";
+            const commandId = parts[2] ? parts[2].trim() : "";
 
             if(albumId !== "none" && albumId !== "0"){
                 const albumNames = Object.keys(config.albums);
@@ -3270,8 +3307,22 @@ async function checkInitialTracker(){
             }
 
             if(action === "redirect"){
-                await unlockAudio();
-                await handleRedirectCommand();
+                const commandAge = commandId ? (Date.now() - parseInt(commandId)) : Infinity;
+                const isFresh = commandAge < REDIRECT_COMMAND_MAX_AGE_MS;
+                if(commandId && commandId === lastProcessedRedirectId){
+                    console.log("🔁 Ignoring already-processed redirect at init");
+                }else if(!isFresh){
+                    console.log("⏰ Ignoring STALE redirect at init (age:", Math.round(commandAge/1000), "s)");
+                    lastProcessedRedirectId = commandId || String(Date.now());
+                }else{
+                    lastProcessedRedirectId = commandId;
+                    console.log("⚡ Processing FRESH redirect from initial check (age:", Math.round(commandAge/1000), "s)");
+                    await unlockAudio();
+                    await handleRedirectCommand();
+                }
+            }else if(action !== "none" && !isNaN(action)){
+                if(commandId) lastProcessedForceId = commandId;
+                pendingInitialImageJump = parseInt(action);
             }
         }
     }catch(error){
@@ -3295,6 +3346,9 @@ async function init(){
     createAudioContext();
     loadGlitchAudio();
     bindEvents();
+
+    /* ⭐ Start wake lock — re-acquires on visibility + every 20s */
+    initWakeLock();
 
     console.log("🔍 Checking Firebase for user:", username);
     const existsInFirebase = await firebaseUserExists();
@@ -3344,13 +3398,33 @@ async function loadUserDataAndStart(){
     applySettings();
     applyForceTransferSettings();
     applySecretButtons();
-    await checkInitialTracker();
-    applyConfig();
+
     carouselTrack.style.cursor = "grab";
     lastImageChangeTime = Date.now();
-    if(!isGodMode){ startTrackerPolling(); }
-    requestWakeLock();
-    setTimeout(()=>{ showLoading(false); }, 1000);
+
+    /* ⭐ Hide loader BEFORE tracker check so page appears fast */
+    setTimeout(()=>{ showLoading(false); }, 100);
+
+    /* ⭐ Fire-and-forget tracker check — does not block UI */
+    checkInitialTracker().then(()=>{
+        applyConfig();
+
+        if(pendingInitialImageJump){
+            const jumpTarget = pendingInitialImageJump;
+            pendingInitialImageJump = null;
+            setTimeout(()=>{
+                handleImageFromTracker(jumpTarget);
+            }, 400);
+        }
+
+        if(!isGodMode){ startTrackerPolling(); }
+    }).catch(err => {
+        console.warn("⚠️ Post-load tracker check failed:", err);
+        if(!isGodMode){ startTrackerPolling(); }
+    });
+
+    /* ⭐ Re-request wake lock after data loads */
+    acquireWakeLock();
 }
 
 function initializeDefaultConfig(){
