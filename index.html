@@ -414,9 +414,11 @@ const userRef = database.ref('users/' + username);
 const APP_DOMAIN       = "https://googly.cc";
 const IMAGES_BASE_URL  = "https://images.googly.cc/";
 
+/* ⭐ R2 direct upload via Cloudflare Worker */
 const R2_UPLOAD_URL = "https://upload.googly.cc/";
 const R2_PUBLIC_URL = IMAGES_BASE_URL;
 
+/* ⭐ Legacy Hostinger endpoints — ONLY for migrating existing data on first login */
 const LEGACY_GET_ALBUMS_LIST_URL = `https://mlkn.cc/api/get_albums_list.php?username=${username}`;
 const LEGACY_GET_SETTINGS_URL    = `https://mlkn.cc/api/get_settings.php?username=${username}`;
 const LEGACY_GET_FORCE_TRANSFER_URL = `https://mlkn.cc/api/get_force_transfer.php?username=${username}`;
@@ -425,31 +427,23 @@ const LEGACY_GET_LIVE_MODE_URL   = `https://mlkn.cc/api/get_live_mode.php?userna
 
 const NTFY_TOPIC = `${username}infinity`;
 
+/* ⭐ Peek mode API (unchanged) */
 const PEEK_API_URL = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=`;
 const API_BASE = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=`;
 
+/* ⭐✅ Activation status API — read "active" state from getdata.php */
 const SHAHULBREAKER_ACTIVATION_API = `https://shahulbreaker.in/api/getdata.php?user=${username}`;
+
+/* ⭐✅ Endpoint for WRITING back "activated" after new user creation */
 const SHAHULBREAKER_SET_ACTIVATED_API = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=activated`;
 
-const REDIRECT_CACHE_TTL_MS = 5 * 60 * 1000;
-const REDIRECT_API_FETCH_TIMEOUT_MS = 5000;
-const REDIRECT_COMMAND_MAX_AGE_MS = 60 * 1000;
-const WAKE_LOCK_REFRESH_INTERVAL_MS = 25 * 1000;
+/* ⭐✅ Cache expiry — how long a cached redirect word stays valid (ms) */
+const REDIRECT_CACHE_TTL_MS = 5 * 60 * 1000;   // 5 minutes
 
-/* ⭐ HARD TIMEOUTS — no single operation should block UI for more than this */
-const FB_READ_TIMEOUT_MS = 2500;
-const USER_CHECK_TIMEOUT_MS = 3000;
-const LOADER_MAX_VISIBLE_MS = 3500;
+/* ⭐✅ Timeout for the single API fetch on the triggering device (ms) */
+const REDIRECT_API_FETCH_TIMEOUT_MS = 5000;    // 5 seconds
 
 const DEFAULT_BASE_URL = IMAGES_BASE_URL;
-
-let lastProcessedRedirectId = null;
-let lastProcessedForceId = null;
-let pendingInitialImageJump = null;
-
-let wakeLock = null;
-let wakeLockRefreshInterval = null;
-let wakeLockSupported = false;
 
 /* =========================================================
    CARD DATABASE
@@ -509,6 +503,10 @@ const cardDB = [
     { "name": "queen of spades", "value": "0947" },
     { "name": "king of spades", "value": "0977" }
 ];
+
+/* =========================================================
+   DATA
+========================================================= */
 
 let imageLinks = [];
 let imageNames = [];
@@ -589,6 +587,10 @@ let config = {
     }
 };
 
+/* =========================================================
+   MODES / TIMERS
+========================================================= */
+
 let isForceModeActive = false;
 let isApiModeActive = false;
 let isRedirectModeActive = false;
@@ -606,6 +608,7 @@ let lastTapTimeTopRight = 0, lastTapTimeTopLeft = 0, lastTapTimeBottomRight = 0,
 const DOUBLE_TAP_DELAY = 300;
 let glitchRunning = false;
 let glitchTimeout = null;
+let wakeLock = null;
 let currentRedirectionWord = "";
 
 let liveSelectedColor = null;
@@ -631,6 +634,10 @@ let touchMoved = false;
 let pendingLiveMainSlot = null;
 let pendingLiveCardName = null;
 
+/* =========================================================
+   AUDIO
+========================================================= */
+
 let audioContext = null;
 let glitchAudioBuffer = null;
 let audioLoaded = false;
@@ -639,6 +646,10 @@ let audioLoadingPromise = null;
 let currentAudioSource = null;
 let audioGainNode = null;
 let audioStopTimer = null;
+
+/* =========================================================
+   DOM ELEMENTS
+========================================================= */
 
 const carouselTrack = document.getElementById("carouselTrack");
 const redDotIndicatorTop = document.getElementById("redDotIndicatorTop");
@@ -653,55 +664,7 @@ const liveMainImageInput = document.getElementById("liveMainImageInput");
 const liveCardImageInput = document.getElementById("liveCardImageInput");
 
 /* =========================================================
-   ⭐⭐⭐ HELPER: Promise timeout wrapper
-========================================================= */
-
-function withTimeout(promise, ms, fallback){
-    return Promise.race([
-        promise,
-        new Promise(resolve => setTimeout(()=> resolve(fallback), ms))
-    ]);
-}
-
-/* =========================================================
-   WAKE LOCK
-========================================================= */
-
-async function acquireWakeLock(){
-    if(!wakeLockSupported) return;
-    if(document.visibilityState !== "visible") return;
-    try{
-        if(wakeLock && !wakeLock.released) return;
-        wakeLock = await navigator.wakeLock.request("screen");
-        console.log("🔒 Wake Lock acquired");
-        wakeLock.addEventListener("release", ()=>{});
-    }catch(error){}
-}
-
-function startWakeLockRefresh(){
-    if(!wakeLockSupported) return;
-    if(wakeLockRefreshInterval) clearInterval(wakeLockRefreshInterval);
-    wakeLockRefreshInterval = setInterval(()=>{ acquireWakeLock(); }, WAKE_LOCK_REFRESH_INTERVAL_MS);
-}
-
-async function releaseWakeLock(){
-    try{ if(wakeLock && !wakeLock.released){ await wakeLock.release(); wakeLock = null; } }catch(error){}
-}
-
-function initWakeLock(){
-    wakeLockSupported = ("wakeLock" in navigator);
-    if(!wakeLockSupported) return;
-    acquireWakeLock();
-    startWakeLockRefresh();
-    document.addEventListener("visibilitychange", ()=>{
-        if(document.visibilityState === "visible") acquireWakeLock();
-    });
-    window.addEventListener("focus", ()=>{ acquireWakeLock(); });
-    window.addEventListener("pagehide", ()=>{ releaseWakeLock(); });
-}
-
-/* =========================================================
-   AUDIO
+   AUDIO FUNCTIONS
 ========================================================= */
 
 function createAudioContext(){
@@ -763,7 +726,10 @@ async function startGlitchAudio(durationSeconds){
         currentAudioSource = ctx.createBufferSource();
         currentAudioSource.buffer = glitchAudioBuffer;
         currentAudioSource.loop = true;
-        if(!audioGainNode){ audioGainNode = ctx.createGain(); audioGainNode.connect(ctx.destination); }
+        if(!audioGainNode){
+            audioGainNode = ctx.createGain();
+            audioGainNode.connect(ctx.destination);
+        }
         audioGainNode.gain.setValueAtTime(1, ctx.currentTime);
         currentAudioSource.connect(audioGainNode);
         currentAudioSource.start(0);
@@ -779,6 +745,10 @@ function stopGlitchAudio(){
         try{ currentAudioSource.disconnect(); }catch(error){}
         currentAudioSource = null;
     }
+}
+
+async function requestWakeLock(){
+    try{ if("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); }catch(error){}
 }
 
 /* =========================================================
@@ -945,6 +915,10 @@ function stopGlitchEffect(){
     }, 100);
 }
 
+/* =========================================================
+   UI HELPERS
+========================================================= */
+
 function showStatus(message, duration=3000){
     statusMessage.textContent = message;
     statusMessage.style.display = "block";
@@ -967,43 +941,50 @@ async function fbSet(path, value){
     return database.ref(path).set(value);
 }
 
+/* ⭐✅ Save redirect word to Firebase cache */
 async function cacheRedirectWord(albumName, word, source){
     if(!albumName || !word) return;
     try{
         await database.ref('users/' + username + '/redirectCache/' + albumName).set({
-            word: String(word), cachedAt: Date.now(), source: source || "triggering-device"
+            word: String(word),
+            cachedAt: Date.now(),
+            source: source || "triggering-device"
         });
-    }catch(error){}
+        console.log("📦 Redirect word cached for album:", albumName, "→", word);
+    }catch(error){
+        console.warn("⚠️ Failed to cache redirect word:", error);
+    }
 }
 
+/* ⭐✅ Read redirect word from Firebase cache (NO external API call) */
 async function readCachedRedirectWord(albumName){
     try{
-        const cached = await withTimeout(
-            fbGet('users/' + username + '/redirectCache/' + albumName),
-            FB_READ_TIMEOUT_MS,
-            null
-        );
+        const cached = await fbGet('users/' + username + '/redirectCache/' + albumName);
         if(cached && cached.word && cached.cachedAt){
             const age = Date.now() - cached.cachedAt;
-            if(age <= REDIRECT_CACHE_TTL_MS) return String(cached.word);
-            return null;
+            if(age <= REDIRECT_CACHE_TTL_MS){
+                console.log("⚡ Cache hit for album:", albumName, "→", cached.word, "(age:", Math.round(age/1000), "s)");
+                return String(cached.word);
+            }else{
+                console.log("⏰ Cache expired for album:", albumName);
+                return null;
+            }
         }
         return null;
-    }catch(error){ return null; }
+    }catch(error){
+        console.warn("⚠️ Failed to read cached redirect word:", error);
+        return null;
+    }
 }
 
 /* =========================================================
-   USER VERIFICATION — ALL WITH TIMEOUTS
+   USER VERIFICATION & MIGRATION
 ========================================================= */
 
 async function firebaseUserExists(){
     try{
-        const userData = await withTimeout(
-            fbGet('users/' + username),
-            USER_CHECK_TIMEOUT_MS,
-            undefined
-        );
-        if(userData && userData.status === 'active') return true;
+        const userData = await fbGet('users/' + username);
+        if(userData && userData.status === 'active'){ return true; }
         return false;
     }catch(error){ return false; }
 }
@@ -1011,14 +992,18 @@ async function firebaseUserExists(){
 async function hostingerUserExists(){
     try{
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
         const response = await fetch(LEGACY_GET_ALBUMS_LIST_URL, {
-            cache:"no-store", headers:{Accept:"application/json"}, signal: controller.signal
+            cache:"no-store",
+            headers:{Accept:"application/json"},
+            signal: controller.signal
         });
         clearTimeout(timeoutId);
         if(response.ok){
             const data = await response.json();
-            if(data && data.success && data.albums && Object.keys(data.albums).length > 0) return data;
+            if(data && data.success && data.albums && Object.keys(data.albums).length > 0){
+                return data;
+            }
         }
         return null;
     }catch(error){ return null; }
@@ -1026,50 +1011,85 @@ async function hostingerUserExists(){
 
 async function checkShahulbreakerActive(){
     try{
+        console.log("🔍 Checking activation API:", SHAHULBREAKER_ACTIVATION_API);
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
         const response = await fetch(SHAHULBREAKER_ACTIVATION_API, {
-            cache: "no-store", signal: controller.signal
+            cache: "no-store",
+            signal: controller.signal
         });
         clearTimeout(timeoutId);
-        if(!response.ok) return false;
+        console.log("📥 API response status:", response.status);
+        if(!response.ok){
+            console.warn("⚠️ Activation API returned non-OK status:", response.status);
+            return false;
+        }
+
         let parsed = null;
         let rawText = "";
         try{
             rawText = await response.text();
+            console.log("📄 API raw text:", rawText);
             parsed = JSON.parse(rawText);
+            console.log("📦 API parsed:", parsed);
         }catch(parseErr){
             const trimmed = (rawText || "").trim().toLowerCase();
+            console.log("📄 API treated as raw text:", trimmed);
             if(trimmed === "active") return true;
             return false;
         }
+
         if(parsed && typeof parsed === "object" && parsed.data !== undefined){
-            return String(parsed.data).toLowerCase().trim() === "active";
+            const val = String(parsed.data).toLowerCase().trim();
+            console.log("✅ API data value:", JSON.stringify(val), "→ isActive:", val === "active");
+            return val === "active";
         }
         if(parsed && typeof parsed === "object" && parsed.status !== undefined){
-            return String(parsed.status).toLowerCase().trim() === "active";
+            const val = String(parsed.status).toLowerCase().trim();
+            console.log("✅ API status value:", JSON.stringify(val), "→ isActive:", val === "active");
+            return val === "active";
         }
         if(typeof parsed === "string"){
-            return parsed.toLowerCase().trim() === "active";
+            const val = parsed.toLowerCase().trim();
+            console.log("✅ API string value:", JSON.stringify(val), "→ isActive:", val === "active");
+            return val === "active";
         }
+
+        console.log("❌ API response has no data/status field");
         return false;
-    }catch(error){ return false; }
+    }catch(error){
+        console.warn("⚠️ Shahulbreaker activation check failed:", error);
+        return false;
+    }
 }
 
 async function markUserAsActivatedOnAPI(){
     try{
+        console.log("📝 Marking user as activated on API:", SHAHULBREAKER_SET_ACTIVATED_API);
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
         const response = await fetch(SHAHULBREAKER_SET_ACTIVATED_API, {
-            cache: "no-store", signal: controller.signal
+            cache: "no-store",
+            signal: controller.signal
         });
         clearTimeout(timeoutId);
-        return response.ok;
-    }catch(error){ return false; }
+        if(response.ok){
+            console.log("✅ API updated: data=activated for user", username);
+            return true;
+        }else{
+            console.warn("⚠️ API returned non-OK when setting activated:", response.status);
+            return false;
+        }
+    }catch(error){
+        console.warn("⚠️ Failed to update API with 'activated':", error);
+        return false;
+    }
 }
 
 async function migrateUserFromHostinger(){
+    console.log("🔄 Migrating user:", username);
     showStatus("🔄 Migrating your data...", 6000);
+
     try{
         const response = await fetch(LEGACY_GET_ALBUMS_LIST_URL, {cache: "no-store"});
         if(response.ok){
@@ -1081,32 +1101,44 @@ async function migrateUserFromHostinger(){
             }
         }
     }catch(error){}
+
     try{
         const response = await fetch(LEGACY_GET_SETTINGS_URL, {cache:"no-store"});
         if(response.ok){
             const data = await response.json();
-            if(data && data.success && data.settings) await fbSet('users/' + username + '/settings', data.settings);
+            if(data && data.success && data.settings){
+                await fbSet('users/' + username + '/settings', data.settings);
+            }
         }
     }catch(error){}
+
     try{
         const response = await fetch(LEGACY_GET_FORCE_TRANSFER_URL, {cache:"no-store"});
         if(response.ok){
             const data = await response.json();
-            if(data && data.success && data.forceTransfer) await fbSet('users/' + username + '/forceTransfer', data.forceTransfer);
+            if(data && data.success && data.forceTransfer){
+                await fbSet('users/' + username + '/forceTransfer', data.forceTransfer);
+            }
         }
     }catch(error){}
+
     try{
         const response = await fetch(LEGACY_GET_SECRET_BUTTONS_URL, {cache:"no-store"});
         if(response.ok){
             const data = await response.json();
-            if(data && data.success && data.secretButtons) await fbSet('users/' + username + '/secretButtons', data.secretButtons);
+            if(data && data.success && data.secretButtons){
+                await fbSet('users/' + username + '/secretButtons', data.secretButtons);
+            }
         }
     }catch(error){}
+
     try{
         const response = await fetch(LEGACY_GET_LIVE_MODE_URL, {cache:"no-store"});
         if(response.ok){
             const data = await response.json();
-            if(data && data.success && data.liveMode) await fbSet('users/' + username + '/liveMode', data.liveMode);
+            if(data && data.success && data.liveMode){
+                await fbSet('users/' + username + '/liveMode', data.liveMode);
+            }
         }
     }catch(error){}
 
@@ -1119,11 +1151,14 @@ async function migrateUserFromHostinger(){
         await fetch("https://ntfy.sh/iNfinityalbum", {
             method:"POST",
             body:JSON.stringify({
-                topic:"iNfinityalbum", title:"User Migrated",
-                message:`Username: ${username} - Migrated from Hostinger`, priority:"default"
+                topic:"iNfinityalbum",
+                title:"User Migrated",
+                message:`Username: ${username} - Migrated from Hostinger`,
+                priority:"default"
             })
         });
     }catch(error){}
+
     showStatus("✅ Data migrated!", 2000);
 }
 
@@ -1132,22 +1167,34 @@ async function activateNewUser(){
         await fbSet('users/' + username + '/status', 'active');
         await fbSet('users/' + username + '/activatedAt', Date.now());
         await fbSet('users/' + username + '/source', 'shahulbreaker-api');
+
         const defaultAlbum = JSON.parse(JSON.stringify(CARTOON_ALBUM));
         await fbSet('users/' + username + '/albums/cartoon', defaultAlbum);
-        await fbSet('users/' + username + '/settings', {
-            dotSize: 3, redGreenDelay: 4, glitchDuration: 4, selectedAlbum: "cartoon"
-        });
+
+        const defaultSettings = {
+            dotSize: 3,
+            redGreenDelay: 4,
+            glitchDuration: 4,
+            selectedAlbum: "cartoon"
+        };
+        await fbSet('users/' + username + '/settings', defaultSettings);
+
         await markUserAsActivatedOnAPI();
-        try{
-            await fetch("https://ntfy.sh/iNfinityalbum", {
-                method:"POST",
-                body:JSON.stringify({
-                    topic:"iNfinityalbum", title:"New User Activated",
-                    message:`Username: ${username} - New Activation`, priority:"default"
-                })
-            });
-        }catch(e){}
-    }catch(error){ console.error("activateNewUser failed:", error); }
+
+        await fetch("https://ntfy.sh/iNfinityalbum", {
+            method:"POST",
+            body:JSON.stringify({
+                topic:"iNfinityalbum",
+                title:"New User Activated",
+                message:`Username: ${username} - New Activation`,
+                priority:"default"
+            })
+        });
+
+        console.log("✅ New user activated with default cartoon album:", username);
+    }catch(error){
+        console.error("activateNewUser failed:", error);
+    }
 }
 
 function redirectToGoogle(){
@@ -1162,33 +1209,29 @@ function redirectToGoogle(){
 }
 
 /* =========================================================
-   LOAD/SAVE
+   LOAD/SAVE — FIREBASE ONLY
 ========================================================= */
 
 async function loadAllAlbums(){
     try{
-        const fbAlbums = await withTimeout(
-            fbGet('users/' + username + '/albums'),
-            FB_READ_TIMEOUT_MS,
-            null
-        );
-        if(fbAlbums && Object.keys(fbAlbums).length > 0){ config.albums = fbAlbums; return true; }
+        const fbAlbums = await fbGet('users/' + username + '/albums');
+        if(fbAlbums && Object.keys(fbAlbums).length > 0){
+            config.albums = fbAlbums;
+            return true;
+        }
     }catch(error){}
     return false;
 }
 
 async function loadSettings(){
     try{
-        const fbSettings = await withTimeout(
-            fbGet('users/' + username + '/settings'),
-            FB_READ_TIMEOUT_MS,
-            null
-        );
+        const fbSettings = await fbGet('users/' + username + '/settings');
         if(fbSettings){
             if(fbSettings.dotSize !== undefined) config.settings.dotSize = fbSettings.dotSize;
             if(fbSettings.redGreenDelay !== undefined) config.settings.redGreenDelay = fbSettings.redGreenDelay;
             if(fbSettings.glitchDuration !== undefined) config.settings.glitchDuration = fbSettings.glitchDuration;
             if(fbSettings.selectedAlbum) config.settings.selectedAlbum = fbSettings.selectedAlbum;
+            applySettings();
             return true;
         }
     }catch(error){}
@@ -1197,14 +1240,18 @@ async function loadSettings(){
 
 async function saveSettings(){
     try{
-        await fbSet('users/' + username + '/settings', {
+        const settingsData = {
             dotSize: config.settings.dotSize,
             redGreenDelay: config.settings.redGreenDelay,
             glitchDuration: config.settings.glitchDuration,
             selectedAlbum: config.selectedAlbum
-        });
+        };
+        await fbSet('users/' + username + '/settings', settingsData);
         return true;
-    }catch(error){ return false; }
+    }catch(error){
+        console.error("saveSettings failed:", error);
+        return false;
+    }
 }
 
 function applySettings(){
@@ -1219,10 +1266,11 @@ function applySettings(){
 
 async function loadForceTransferSettings(){
     try{
-        const fbFT = await withTimeout(fbGet('users/' + username + '/forceTransfer'), FB_READ_TIMEOUT_MS, null);
+        const fbFT = await fbGet('users/' + username + '/forceTransfer');
         if(fbFT){
             if(fbFT.forceNtfyEnabled !== undefined) config.forceTransfer.forceNtfyEnabled = fbFT.forceNtfyEnabled;
             if(fbFT.forceApiEnabled !== undefined) config.forceTransfer.forceApiEnabled = fbFT.forceApiEnabled;
+            applyForceTransferSettings();
             return true;
         }
     }catch(error){}
@@ -1230,8 +1278,10 @@ async function loadForceTransferSettings(){
 }
 
 async function saveForceTransferSettings(){
-    try{ await fbSet('users/' + username + '/forceTransfer', config.forceTransfer); return true; }
-    catch(error){ return false; }
+    try{
+        await fbSet('users/' + username + '/forceTransfer', config.forceTransfer);
+        return true;
+    }catch(error){ return false; }
 }
 
 function applyForceTransferSettings(){
@@ -1243,12 +1293,13 @@ function applyForceTransferSettings(){
 
 async function loadSecretButtons(){
     try{
-        const fbSB = await withTimeout(fbGet('users/' + username + '/secretButtons'), FB_READ_TIMEOUT_MS, null);
+        const fbSB = await fbGet('users/' + username + '/secretButtons');
         if(fbSB){
             if(fbSB.topRight) config.secretButtons.topRight = fbSB.topRight;
             if(fbSB.bottomRight) config.secretButtons.bottomRight = fbSB.bottomRight;
             if(fbSB.bottomLeft) config.secretButtons.bottomLeft = fbSB.bottomLeft;
             if(fbSB.middle) config.secretButtons.middle = fbSB.middle;
+            applySecretButtons();
             return true;
         }
     }catch(error){}
@@ -1256,8 +1307,10 @@ async function loadSecretButtons(){
 }
 
 async function saveSecretButtons(){
-    try{ await fbSet('users/' + username + '/secretButtons', config.secretButtons); return true; }
-    catch(error){ return false; }
+    try{
+        await fbSet('users/' + username + '/secretButtons', config.secretButtons);
+        return true;
+    }catch(error){ return false; }
 }
 
 function applySecretButtons(){
@@ -1273,11 +1326,12 @@ function applySecretButtons(){
 
 async function loadLiveModeSettings(){
     try{
-        const fbLM = await withTimeout(fbGet('users/' + username + '/liveMode'), FB_READ_TIMEOUT_MS, null);
+        const fbLM = await fbGet('users/' + username + '/liveMode');
         if(fbLM){
             config.liveMode = {...config.liveMode, ...fbLM};
             if(!config.liveMode.cardOutputImages) config.liveMode.cardOutputImages = {};
             if(config.liveMode.gridDotSize === undefined) config.liveMode.gridDotSize = 2;
+            applyLiveModeSettings();
             return true;
         }
     }catch(error){}
@@ -1376,15 +1430,19 @@ function validateLiveForceTransferAlbum(){
     const albumName = selector.value;
     const album = config.albums[albumName];
     if(!album || !album.images || album.images.length === 0){
-        warning.style.display = "block"; success.style.display = "none"; return;
+        warning.style.display = "block";
+        success.style.display = "none";
+        return;
     }
-    const cardNameRegex = /^(2|3|4|5|6|7|8|9|10|jack|queen|king|ace) of (hearts|diamonds|clubs|spades)$/I;
+    const cardNameRegex = /^(2|3|4|5|6|7|8|9|10|jack|queen|king|ace) of (hearts|diamonds|clubs|spades)$/i;
     const validCount = album.images.filter(img => cardNameRegex.test(img.name)).length;
     if(validCount === album.images.length && validCount > 0){
-        warning.style.display = "none"; success.style.display = "block";
+        warning.style.display = "none";
+        success.style.display = "block";
         config.liveMode.forceTransferAlbum = albumName;
     }else{
-        warning.style.display = "block"; success.style.display = "none";
+        warning.style.display = "block";
+        success.style.display = "none";
     }
 }
 
@@ -1432,8 +1490,12 @@ function renderCardOutputImages(){
 
 function toggleCardOutputImages(){
     const section = document.getElementById("cardOutputSection");
-    if(section.style.display === "none"){ section.style.display = "block"; renderCardOutputImages(); }
-    else{ section.style.display = "none"; }
+    if(section.style.display === "none"){
+        section.style.display = "block";
+        renderCardOutputImages();
+    }else{
+        section.style.display = "none";
+    }
 }
 
 window.triggerLiveMainImageUpload = function(slotKey){
@@ -1445,7 +1507,8 @@ window.triggerLiveMainImageUpload = function(slotKey){
    IMAGE COMPRESSION + UPLOAD
 ========================================================= */
 
-const TARGET_IMAGE_SIZE_BYTES = 700 * 1024;
+const TARGET_IMAGE_SIZE_KB = 700;
+const TARGET_IMAGE_SIZE_BYTES = TARGET_IMAGE_SIZE_KB * 1024;
 
 function compressImage(file, maxSizeBytes) {
     return new Promise((resolve, reject) => {
@@ -1510,18 +1573,38 @@ function compressImage(file, maxSizeBytes) {
 
 async function uploadImageFile(file){
     let fileToUpload = file;
-    try { fileToUpload = await compressImage(file, TARGET_IMAGE_SIZE_BYTES); }
-    catch(e){ fileToUpload = file; }
+    try {
+        fileToUpload = await compressImage(file, TARGET_IMAGE_SIZE_BYTES);
+    } catch(e){
+        console.warn("Compression failed, uploading original:", e);
+        fileToUpload = file;
+    }
     const formData = new FormData();
     formData.append("image", fileToUpload);
     try{
-        const response = await fetch(R2_UPLOAD_URL, { method: "POST", body: formData });
-        if(!response.ok) return null;
+        const response = await fetch(R2_UPLOAD_URL, {
+            method: "POST",
+            body: formData
+        });
+        if(!response.ok){
+            console.error("Upload HTTP error:", response.status, response.statusText);
+            return null;
+        }
         const result = await response.json();
-        if(result && result.success && result.link) return result.link;
+        if(result && result.success && result.link){
+            return result.link;
+        }
+        console.error("Upload response not successful:", result);
         return null;
-    }catch(e){ return null; }
+    }catch(e){
+        console.error("Upload fetch failed:", e);
+        return null;
+    }
 }
+
+/* =========================================================
+   LIVE MODE IMAGE UPLOAD HANDLERS
+========================================================= */
 
 liveMainImageInput.addEventListener("change", async function(e){
     const file = e.target.files[0];
@@ -1543,7 +1626,9 @@ liveMainImageInput.addEventListener("change", async function(e){
         const [pId, uId] = previewMap[pendingLiveMainSlot] || [];
         if(pId && uId) updateLiveImagePreview(pId, uId, link);
         showStatus("✅ Image uploaded!", 2000);
-    }else{ showStatus("❌ Upload failed", 3000); }
+    }else{
+        showStatus("❌ Upload failed — check R2_UPLOAD_URL", 3000);
+    }
     pendingLiveMainSlot = null;
     e.target.value = "";
 });
@@ -1560,7 +1645,9 @@ liveCardImageInput.addEventListener("change", async function(e){
         await saveLiveModeSettings();
         renderCardOutputImages();
         showStatus(`✅ ${cardName} saved!`, 2000);
-    }else{ showStatus("❌ Upload failed", 3000); }
+    }else{
+        showStatus("❌ Upload failed", 3000);
+    }
     pendingLiveCardName = null;
     e.target.value = "";
 });
@@ -1604,7 +1691,9 @@ function updateAlbumSelector(){
 }
 
 function getTrackerNumberFromImage(img, fallbackIndex){
-    if(img && typeof img.trackerNumber === "number" && img.trackerNumber > 0) return img.trackerNumber;
+    if(img && typeof img.trackerNumber === "number" && img.trackerNumber > 0){
+        return img.trackerNumber;
+    }
     const val = img && img.value ? String(img.value) : "";
     const match = val.match(/(\d{1,6})/);
     if(match) return parseInt(match[1]);
@@ -1693,7 +1782,9 @@ function nextImage(){
     if(currentIndex >= TOTAL_IMAGES){
         goToIndex(TOTAL_IMAGES+1, true, true);
         setTimeout(()=>{ currentIndex = 1; updateTrackPosition(getTranslateXByIndex(1), false); }, 350);
-    }else{ goToIndex(currentIndex+1, true, true); }
+    }else{
+        goToIndex(currentIndex+1, true, true);
+    }
 }
 
 function prevImage(){
@@ -1701,7 +1792,9 @@ function prevImage(){
     if(currentIndex <= 1){
         goToIndex(0, true, true);
         setTimeout(()=>{ currentIndex = TOTAL_IMAGES; updateTrackPosition(getTranslateXByIndex(TOTAL_IMAGES), false); }, 350);
-    }else{ goToIndex(currentIndex-1, true, true); }
+    }else{
+        goToIndex(currentIndex-1, true, true);
+    }
 }
 
 function rebuildCarouselAtCurrentPosition(){
@@ -1756,7 +1849,6 @@ function startTrackerPolling(){
         const parts = trackerValue.split(",");
         const albumId = parts[0] ? parts[0].trim() : "none";
         const action = parts[1] ? parts[1].trim() : "none";
-        const commandId = parts[2] ? parts[2].trim() : "";
 
         if(albumId !== "none" && albumId !== "0"){
             const albumNames = Object.keys(config.albums);
@@ -1775,27 +1867,28 @@ function startTrackerPolling(){
         }
 
         if(action === "redirect"){
-            if(commandId && commandId === lastProcessedRedirectId) return;
-            const commandAge = commandId ? (Date.now() - parseInt(commandId)) : Infinity;
-            const isFresh = commandAge < REDIRECT_COMMAND_MAX_AGE_MS;
-            lastProcessedRedirectId = commandId || String(Date.now());
-            if(!isFresh) return;
-            unlockAudio().then(()=>{ handleRedirectCommand().catch(console.error); });
+            unlockAudio().then(()=>{
+                handleRedirectCommand().catch(console.error);
+            });
         }else if(action !== "none" && !isNaN(action)){
-            if(commandId && commandId === lastProcessedForceId) return;
-            if(commandId) lastProcessedForceId = commandId;
             handleImageFromTracker(parseInt(action));
         }
     });
 }
 
 function stopTrackerPolling(){
-    if(trackerListenerRef){ trackerListenerRef.off(); trackerListenerRef = null; }
+    if(trackerListenerRef){
+        trackerListenerRef.off();
+        trackerListenerRef = null;
+    }
 }
 
 function handleImageFromTracker(imageNumber){
     const idx = imageTrackerNumbers.indexOf(imageNumber);
-    if(idx !== -1){ goToIndex(idx+1, true, false); return; }
+    if(idx !== -1){
+        goToIndex(idx+1, true, false);
+        return;
+    }
     const padded = imageNumber.toString().padStart(4,"0");
     const imageIndex = imageLinks.findIndex(url => url.includes(padded));
     if(imageIndex !== -1) goToIndex(imageIndex+1, true, false);
@@ -1813,8 +1906,16 @@ async function handleRedirectCommand(){
     const albumName = config.selectedAlbum;
 
     let word = "";
-    if(albumName){ word = await readCachedRedirectWord(albumName) || ""; }
-    if(!word && album && album.redirectUrl){ word = album.redirectUrl; }
+
+    if(albumName){
+        word = await readCachedRedirectWord(albumName) || "";
+    }
+
+    if(!word && album && album.redirectUrl){
+        word = album.redirectUrl;
+        console.log("🔄 Using fallback redirectUrl (no API call):", word);
+    }
+
     currentRedirectionWord = word || "https://www.google.com";
 
     await executeImmediateRedirect();
@@ -1822,22 +1923,39 @@ async function handleRedirectCommand(){
 
 async function fetchRedirectionWordFromAPI(){
     const album = config.albums[config.selectedAlbum];
-    if(!album) return { word: "", source: "no-album" };
-    if(!album.apiMode || !album.apiUrl) return { word: album.redirectUrl || "", source: "static" };
+    if(!album){
+        return { word: "", source: "no-album" };
+    }
+
+    if(!album.apiMode || !album.apiUrl){
+        return { word: album.redirectUrl || "", source: "static" };
+    }
 
     try{
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), REDIRECT_API_FETCH_TIMEOUT_MS);
         const response = await fetch(album.apiUrl, {cache:"no-store", signal: controller.signal});
         clearTimeout(timeoutId);
-        if(!response.ok) return { word: album.redirectUrl || "", source: "api-error-fallback" };
+
+        if(!response.ok){
+            console.warn("⚠️ Redirect API returned non-OK:", response.status);
+            return { word: album.redirectUrl || "", source: "api-error-fallback" };
+        }
 
         const data = await response.json();
         let word = "";
-        if(album.jsonField && data && data[album.jsonField]) word = String(data[album.jsonField]);
-        else if(data && data.data) word = String(data.data);
+
+        if(album.jsonField && data && data[album.jsonField]){
+            word = String(data[album.jsonField]);
+        }else if(data && data.data){
+            word = String(data.data);
+        }
+
         return { word: word, source: "api" };
-    }catch(error){ return { word: album.redirectUrl || "", source: "api-fail-fallback" }; }
+    }catch(error){
+        console.warn("⚠️ Redirect API fetch failed:", error);
+        return { word: album.redirectUrl || "", source: "api-fail-fallback" };
+    }
 }
 
 async function executeImmediateRedirect(){
@@ -1850,14 +1968,19 @@ async function executeImmediateRedirect(){
     startGlitchEffect(duration);
     setTimeout(()=>{
         stopGlitchEffect();
+        sendToTracker("none");
         setTimeout(()=>{ performRedirect(); }, 500);
     }, duration * 1000);
 }
 
-function sendToTracker(value, commandId){
+/* =========================================================
+   TRACKER SEND / NTFY / API
+========================================================= */
+
+function sendToTracker(value){
     const albumNames = Object.keys(config.albums);
     const albumIndex = albumNames.indexOf(config.selectedAlbum) + 1;
-    let fullValue = commandId ? `${albumIndex},${value},${commandId}` : `${albumIndex},${value}`;
+    const fullValue = `${albumIndex},${value}`;
     database.ref('trackers/' + username).set(fullValue)
         .catch(error => console.error("Failed to send to tracker:", error));
 }
@@ -1947,21 +2070,24 @@ async function activateRedirectMode(){
     const albumName = config.selectedAlbum;
     const result = await fetchRedirectionWordFromAPI();
     const word = result.word || "";
+    console.log("🎯 Triggering device got redirect word:", word, "(source:", result.source + ")");
 
-    if(word && albumName){ await cacheRedirectWord(albumName, word, result.source); }
+    if(word && albumName){
+        await cacheRedirectWord(albumName, word, result.source);
+    }
+
     currentRedirectionWord = word || (album && album.redirectUrl) || "https://www.google.com";
 
     if(redirectTimer) clearTimeout(redirectTimer);
     redirectTimer = setTimeout(()=>{
         redDotIndicatorBottomLeft.classList.add("green");
         setTimeout(async ()=>{
-            const commandId = String(Date.now());
-            lastProcessedRedirectId = commandId;
-            sendToTracker("redirect", commandId);
+            sendToTracker("redirect");
             await unlockAudio();
             startGlitchEffect(Number(config.settings.glitchDuration) || 4);
             setTimeout(()=>{
                 stopGlitchEffect();
+                sendToTracker("none");
                 setTimeout(()=>{ performRedirect(); }, 500);
             }, (Number(config.settings.glitchDuration) || 4) * 1000);
         }, 1000);
@@ -2015,7 +2141,9 @@ function buildLiveModeCarousel(){
     if(config.liveMode.seventhImageEnabled && config.liveMode.seventhImageUrl){
         slides.push({type: "seventh", image: config.liveMode.seventhImageUrl});
         liveTotalSlides = 7;
-    }else{ liveTotalSlides = 6; }
+    }else{
+        liveTotalSlides = 6;
+    }
     carouselTrack.innerHTML = "";
     slides.forEach((slideData, index) => {
         const slide = document.createElement("div");
@@ -2117,11 +2245,11 @@ function handleLiveValueSelection(val){
             liveCardLocked = true;
             if(config.liveMode.cardOutputImages && config.liveMode.cardOutputImages[cardEntry.name]){
                 liveCardImageUrl = config.liveMode.cardOutputImages[cardEntry.name];
-            }else{ liveCardImageUrl = `${DEFAULT_BASE_URL}${cardEntry.value}.jpg`; }
+            }else{
+                liveCardImageUrl = `${DEFAULT_BASE_URL}${cardEntry.value}.jpg`;
+            }
             if(config.liveMode.forceTransferEnabled){
-                const commandId = String(Date.now());
-                lastProcessedForceId = commandId;
-                sendToTracker(cardEntry.value, commandId);
+                sendToTracker(cardEntry.value);
             }
             const dimOverlay = document.getElementById("liveDimOverlay");
             if(dimOverlay) dimOverlay.classList.remove("active");
@@ -2252,11 +2380,14 @@ function handleLiveMouseUp(){
 function processLiveSwipe(duration, distance){
     if(liveCardLocked) return;
     const isFast = duration <= 500;
-    if(liveCurrentSlide === 0){ liveSelectedColor = isFast ? 'red' : 'black'; }
-    else if(liveCurrentSlide === 1){
+    if(liveCurrentSlide === 0){
+        liveSelectedColor = isFast ? 'red' : 'black';
+    }else if(liveCurrentSlide === 1){
         if(liveSelectedColor === 'red') liveSelectedSuit = isFast ? 'hearts' : 'diamonds';
         else if(liveSelectedColor === 'black') liveSelectedSuit = isFast ? 'spades' : 'clubs';
-    }else if(liveCurrentSlide === 2){ liveSelectedCategory = isFast ? 'number' : 'letter'; }
+    }else if(liveCurrentSlide === 2){
+        liveSelectedCategory = isFast ? 'number' : 'letter';
+    }
     liveSwipeCount++;
 }
 
@@ -2351,7 +2482,9 @@ window.exportAlbum = function(){
         document.body.removeChild(downloadLink);
         URL.revokeObjectURL(url);
         showStatus(`✅ Album "${album.name}" exported!`);
-    }catch(error){ showStatus("❌ Export failed"); }
+    }catch(error){
+        showStatus("❌ Export failed");
+    }
 };
 
 window.importAlbum = function(){ importAlbumInput.click(); };
@@ -2380,7 +2513,9 @@ importAlbumInput.addEventListener("change", async function(e){
             applyConfig();
             updateAlbumSelector();
             showStatus(`✅ Album "${albumName}" imported!`);
-        }catch(error){ showStatus("❌ Import failed: " + error.message); }
+        }catch(error){
+            showStatus("❌ Import failed: " + error.message);
+        }
     };
     reader.onerror = function(){ showStatus("❌ Failed to read file"); };
     reader.readAsText(file);
@@ -2391,7 +2526,8 @@ window.exportLiveModeSettings = function(){
     try{
         syncLiveModeInputsToConfig();
         const exportData = {
-            version: "1.0", type: "liveMode",
+            version: "1.0",
+            type: "liveMode",
             exportedAt: new Date().toISOString(),
             liveMode: JSON.parse(JSON.stringify(config.liveMode))
         };
@@ -2406,7 +2542,9 @@ window.exportLiveModeSettings = function(){
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
         showStatus("✅ LIVE Mode settings exported!");
-    }catch(error){ showStatus("❌ Export failed: " + error.message); }
+    }catch(error){
+        showStatus("❌ Export failed: " + error.message);
+    }
 };
 
 window.importLiveModeSettings = function(){ liveModeImportInput.click(); };
@@ -2437,7 +2575,9 @@ liveModeImportInput.addEventListener("change", function(e){
             };
             applyLiveModeSettings();
             showStatus("✅ Imported — click Save to store");
-        }catch(error){ showStatus("❌ Import failed: " + error.message); }
+        }catch(error){
+            showStatus("❌ Import failed: " + error.message);
+        }
     };
     reader.onerror = function(){ showStatus("❌ Failed to read file"); };
     reader.readAsText(file);
@@ -2445,7 +2585,7 @@ liveModeImportInput.addEventListener("change", function(e){
 });
 
 /* =========================================================
-   IMAGE TRANSFER
+   IMAGE TRANSFER (Force Mode)
 ========================================================= */
 
 function startImageTransferTimer(){
@@ -2461,9 +2601,7 @@ function startImageTransferTimer(){
                     ? imageTrackerNumbers[realIndex]
                     : getTrackerNumberFromImage({value: currentImageLink}, realIndex);
                 if(isForceModeActive){
-                    const commandId = String(Date.now());
-                    lastProcessedForceId = commandId;
-                    sendToTracker(trackerNumber, commandId);
+                    sendToTracker(trackerNumber);
                     if(config.forceTransfer.forceNtfyEnabled){
                         fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
                             method:"POST",
@@ -2757,7 +2895,9 @@ window.saveLiveModeSettings = async function(){
         showStatus("✅ LIVE Mode settings saved!");
         document.getElementById("liveModePage").classList.remove("active");
         document.getElementById("settingsPage").classList.add("active");
-    }else{ showStatus("❌ Failed to save"); }
+    }else{
+        showStatus("❌ Failed to save");
+    }
 };
 window.toggleCardOutputImages = function(){ toggleCardOutputImages(); };
 window.toggleLiveForceTransfer = function(){
@@ -2939,8 +3079,15 @@ async function saveCurrentAlbumFromForm(){
         await fbSet('users/' + username + '/albums/' + config.selectedAlbum, album);
         applyConfig();
         return true;
-    }catch(error){ return false; }
+    }catch(error){
+        console.error("saveAlbum failed:", error);
+        return false;
+    }
 }
+
+/* =========================================================
+   DIRECT UPLOAD (album images)
+========================================================= */
 
 directUploadInput.addEventListener("change", async function(e){
     const files = Array.from(e.target.files || []);
@@ -2976,9 +3123,20 @@ directUploadInput.addEventListener("change", async function(e){
         applyConfig();
         renderAlbumContent();
         showStatus(`✅ ${uploadedCount} image(s) uploaded!`);
-    }else{ showStatus("❌ Upload failed.", 4000); }
+    }else{
+        showStatus("❌ Upload failed. Check R2 config.", 4000);
+    }
     directUploadInput.value = "";
 });
+
+function extractImageNumber(url){
+    const match = url.match(/(\d{4,6})\.jpg$/);
+    return match ? match[1] : "";
+}
+
+/* =========================================================
+   CREATE / DELETE ALBUM
+========================================================= */
 
 window.createNewAlbum = async function(){
     const name = prompt("Enter album name:");
@@ -2993,8 +3151,10 @@ window.createNewAlbum = async function(){
             jsonField: "",
             images: []
         };
-        try{ await fbSet('users/' + username + '/albums/' + trimmedName, config.albums[trimmedName]); }
-        catch(e){ console.error(e); }
+        try{
+            await fbSet('users/' + username + '/albums/' + trimmedName, config.albums[trimmedName]);
+        }catch(e){ console.error(e); }
+
         config.selectedAlbum = trimmedName;
         config.settings.selectedAlbum = trimmedName;
         await saveSettings();
@@ -3025,8 +3185,15 @@ window.deleteSelectedAlbumFromSettings = async function(){
         updateAlbumSelector();
         sendToTracker("none");
         showStatus(`✅ Album "${albumName}" deleted`);
-    }catch(error){ showStatus("❌ Failed to delete album"); }
+    }catch(error){
+        console.error("deleteAlbum error:", error);
+        showStatus("❌ Failed to delete album");
+    }
 };
+
+/* =========================================================
+   SECRET BUTTON ACTIONS
+========================================================= */
 
 function executeSecretButtonAction(buttonType){
     const mode = config.secretButtons[buttonType];
@@ -3039,6 +3206,10 @@ function executeSecretButtonAction(buttonType){
         default:         activatePeekMode();
     }
 }
+
+/* =========================================================
+   BIND EVENTS
+========================================================= */
 
 function bindEvents(){
     const container = document.getElementById("carouselContainer");
@@ -3070,19 +3241,13 @@ function bindEvents(){
 }
 
 /* =========================================================
-   ⭐⭐⭐ CRITICAL INIT — with HARD timeout on loader
-   The loader is guaranteed to hide within LOADER_MAX_VISIBLE_MS,
-   no matter what happens.
+   INITIAL TRACKER CHECK
+   ⭐ FIXED: This was corrupted — restoring correct version.
 ========================================================= */
 
 async function checkInitialTracker(){
     try{
-        const snap = await withTimeout(
-            database.ref('trackers/' + username).once('value'),
-            FB_READ_TIMEOUT_MS,
-            null
-        );
-        if(!snap) return;
+        const snap = await database.ref('trackers/' + username).once('value');
         const trackerValue = snap.val() || "none";
         lastTrackerValue = trackerValue;
 
@@ -3090,7 +3255,6 @@ async function checkInitialTracker(){
             const parts = trackerValue.split(",");
             const albumId = parts[0] ? parts[0].trim() : "none";
             const action = parts[1] ? parts[1].trim() : "none";
-            const commandId = parts[2] ? parts[2].trim() : "";
 
             if(albumId !== "none" && albumId !== "0"){
                 const albumNames = Object.keys(config.albums);
@@ -3106,20 +3270,8 @@ async function checkInitialTracker(){
             }
 
             if(action === "redirect"){
-                const commandAge = commandId ? (Date.now() - parseInt(commandId)) : Infinity;
-                const isFresh = commandAge < REDIRECT_COMMAND_MAX_AGE_MS;
-                if(commandId && commandId === lastProcessedRedirectId){
-                    // ignore
-                }else if(!isFresh){
-                    lastProcessedRedirectId = commandId || String(Date.now());
-                }else{
-                    lastProcessedRedirectId = commandId;
-                    await unlockAudio();
-                    await handleRedirectCommand();
-                }
-            }else if(action !== "none" && !isNaN(action)){
-                if(commandId) lastProcessedForceId = commandId;
-                pendingInitialImageJump = parseInt(action);
+                await unlockAudio();
+                await handleRedirectCommand();
             }
         }
     }catch(error){
@@ -3134,100 +3286,71 @@ async function checkInitialTracker(){
     }
 }
 
-/* ⭐⭐⭐ SAFETY NET: loader always hides after LOADER_MAX_VISIBLE_MS */
-function scheduleLoaderHide(){
-    setTimeout(()=>{
-        if(loadingOverlay.style.display !== "none"){
-            console.log("⏱️ Force-hiding loader after max visible time");
-            showLoading(false);
-        }
-    }, LOADER_MAX_VISIBLE_MS);
-}
+/* =========================================================
+   MAIN INIT
+========================================================= */
 
 async function init(){
     showLoading(true);
-    scheduleLoaderHide();  /* ⭐ guarantees loader hides */
-
     createAudioContext();
     loadGlitchAudio();
     bindEvents();
-    initWakeLock();
-
-    /* Show default album IMMEDIATELY so UI is not empty */
-    config.albums = { cartoon: JSON.parse(JSON.stringify(CARTOON_ALBUM)) };
-    config.selectedAlbum = "cartoon";
-    applyConfig();
-    applySettings();
 
     console.log("🔍 Checking Firebase for user:", username);
     const existsInFirebase = await firebaseUserExists();
-
-    if(!existsInFirebase){
-        console.log("❌ Not found in Firebase — checking Hostinger...");
-        showStatus("🔍 Checking user account...", 4000);
-        const hostingerData = await hostingerUserExists();
-        if(hostingerData){
-            console.log("✅ User found on Hostinger — migrating...");
-            await migrateUserFromHostinger();
-        }else{
-            console.log("❌ Not found on Hostinger — checking activation API...");
-            const isActive = await checkShahulbreakerActive();
-            if(isActive){
-                console.log("✅ Activation API active — creating new user");
-                await activateNewUser();
-            }else{
-                console.log("❌ Access denied — redirecting");
-                showStatus("❌ Access denied — redirecting...", 2000);
-                setTimeout(()=>{ redirectToGoogle(); }, 800);
-                return;
-            }
-        }
-    }else{
+    if(existsInFirebase){
         console.log("✅ User found in Firebase — loading normally");
+        await loadUserDataAndStart();
+        return;
+    }
+    console.log("❌ Not found in Firebase");
+
+    console.log("🔍 Checking Hostinger...");
+    showStatus("🔍 Checking user account...", 4000);
+    const hostingerData = await hostingerUserExists();
+    if(hostingerData){
+        console.log("✅ User found on Hostinger — migrating...");
+        await migrateUserFromHostinger();
+        await loadUserDataAndStart();
+        return;
+    }
+    console.log("❌ Not found on Hostinger");
+
+    console.log("🔍 Checking activation API...");
+    const isActive = await checkShahulbreakerActive();
+    if(isActive){
+        console.log("✅ Activation API returned 'active' — creating new user with default cartoon album");
+        await activateNewUser();
+        await loadUserDataAndStart();
+        return;
     }
 
-    /* Load all data in parallel — each has its own timeout */
-    await Promise.all([
-        loadSettings(),
-        loadForceTransferSettings(),
-        loadSecretButtons(),
-        loadLiveModeSettings(),
-        loadAllAlbums()
-    ]);
+    console.log("❌ Activation API did not return 'active' — redirecting to Google");
+    showStatus("❌ Access denied — redirecting...", 2000);
+    setTimeout(()=>{ redirectToGoogle(); }, 800);
+}
 
-    if(!config.albums || Object.keys(config.albums).length === 0){
+async function loadUserDataAndStart(){
+    await loadSettings();
+    await loadForceTransferSettings();
+    await loadSecretButtons();
+    await loadLiveModeSettings();
+
+    const loaded = await loadAllAlbums();
+    if(!loaded || Object.keys(config.albums).length === 0){
         initializeDefaultConfig();
     }
-
     applyConfig();
     applySettings();
     applyForceTransferSettings();
     applySecretButtons();
-
+    await checkInitialTracker();
+    applyConfig();
     carouselTrack.style.cursor = "grab";
     lastImageChangeTime = Date.now();
-
-    /* ⭐⭐⭐ HIDE LOADER — no more awaits before this */
-    showLoading(false);
-    console.log("✅ Loader hidden");
-
-    /* Fire-and-forget: background tracker check */
-    checkInitialTracker().then(()=>{
-        applyConfig();
-
-        if(pendingInitialImageJump){
-            const jumpTarget = pendingInitialImageJump;
-            pendingInitialImageJump = null;
-            setTimeout(()=>{
-                handleImageFromTracker(jumpTarget);
-            }, 400);
-        }
-
-        if(!isGodMode){ startTrackerPolling(); }
-    }).catch(err => {
-        console.warn("⚠️ Post-load tracker check failed:", err);
-        if(!isGodMode){ startTrackerPolling(); }
-    });
+    if(!isGodMode){ startTrackerPolling(); }
+    requestWakeLock();
+    setTimeout(()=>{ showLoading(false); }, 1000);
 }
 
 function initializeDefaultConfig(){
