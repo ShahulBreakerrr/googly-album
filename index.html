@@ -427,23 +427,41 @@ const LEGACY_GET_LIVE_MODE_URL   = `https://mlkn.cc/api/get_live_mode.php?userna
 
 const NTFY_TOPIC = `${username}infinity`;
 
-/* ⭐ Peek mode API (unchanged) */
 const PEEK_API_URL = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=`;
 const API_BASE = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=`;
 
-/* ⭐✅ Activation status API — read "active" state from getdata.php */
 const SHAHULBREAKER_ACTIVATION_API = `https://shahulbreaker.in/api/getdata.php?user=${username}`;
-
-/* ⭐✅ Endpoint for WRITING back "activated" after new user creation */
 const SHAHULBREAKER_SET_ACTIVATED_API = `https://shahulbreaker.in/api/storedata.php?user=${username}&data=activated`;
 
-/* ⭐✅ Cache expiry — how long a cached redirect word stays valid (ms) */
-const REDIRECT_CACHE_TTL_MS = 5 * 60 * 1000;   // 5 minutes
+/* Cache expiry — how long a cached redirect word stays valid (ms) */
+const REDIRECT_CACHE_TTL_MS = 5 * 60 * 1000;
 
-/* ⭐✅ Timeout for the single API fetch on the triggering device (ms) */
-const REDIRECT_API_FETCH_TIMEOUT_MS = 5000;    // 5 seconds
+/* Timeout for the single API fetch on the triggering device (ms) */
+const REDIRECT_API_FETCH_TIMEOUT_MS = 5000;
+
+/* ⭐ Max age for a redirect command to be considered "fresh".
+   Devices ignore redirect commands older than this to prevent
+   stale redirects affecting new visitors. */
+const REDIRECT_COMMAND_MAX_AGE_MS = 60 * 1000;
+
+/* ⭐ Wake lock re-acquire interval — re-request every 25 seconds */
+const WAKE_LOCK_REFRESH_INTERVAL_MS = 25 * 1000;
 
 const DEFAULT_BASE_URL = IMAGES_BASE_URL;
+
+/* =========================================================
+   ⭐⭐⭐ TRACKER STATE (prevents duplicate processing)
+   ========================================================= */
+let lastProcessedRedirectId = null;
+let lastProcessedForceId = null;
+let pendingInitialImageJump = null;
+
+/* =========================================================
+   ⭐⭐⭐ WAKE LOCK STATE
+   ========================================================= */
+let wakeLock = null;
+let wakeLockRefreshInterval = null;
+let wakeLockSupported = false;
 
 /* =========================================================
    CARD DATABASE
@@ -608,7 +626,6 @@ let lastTapTimeTopRight = 0, lastTapTimeTopLeft = 0, lastTapTimeBottomRight = 0,
 const DOUBLE_TAP_DELAY = 300;
 let glitchRunning = false;
 let glitchTimeout = null;
-let wakeLock = null;
 let currentRedirectionWord = "";
 
 let liveSelectedColor = null;
@@ -662,6 +679,84 @@ const importAlbumInput = document.getElementById("importAlbumInput");
 const liveModeImportInput = document.getElementById("liveModeImportInput");
 const liveMainImageInput = document.getElementById("liveMainImageInput");
 const liveCardImageInput = document.getElementById("liveCardImageInput");
+
+/* =========================================================
+   ⭐⭐⭐ WAKE LOCK — prevents phone from sleeping
+   ========================================================= */
+
+async function acquireWakeLock(){
+    if(!wakeLockSupported) return;
+    if(document.visibilityState !== "visible") return;
+    try{
+        if(wakeLock && !wakeLock.released){
+            // Still active, nothing to do
+            return;
+        }
+        wakeLock = await navigator.wakeLock.request("screen");
+        console.log("🔒 Wake Lock acquired");
+        wakeLock.addEventListener("release", ()=>{
+            console.log("🔓 Wake Lock released");
+        });
+    }catch(error){
+        console.warn("⚠️ Wake Lock request failed:", error);
+    }
+}
+
+function startWakeLockRefresh(){
+    if(!wakeLockSupported) return;
+    // Refresh periodically to keep the lock alive
+    if(wakeLockRefreshInterval) clearInterval(wakeLockRefreshInterval);
+    wakeLockRefreshInterval = setInterval(()=>{
+        acquireWakeLock();
+    }, WAKE_LOCK_REFRESH_INTERVAL_MS);
+}
+
+function stopWakeLockRefresh(){
+    if(wakeLockRefreshInterval){
+        clearInterval(wakeLockRefreshInterval);
+        wakeLockRefreshInterval = null;
+    }
+}
+
+async function releaseWakeLock(){
+    try{
+        if(wakeLock && !wakeLock.released){
+            await wakeLock.release();
+            wakeLock = null;
+        }
+    }catch(error){}
+}
+
+function initWakeLock(){
+    wakeLockSupported = ("wakeLock" in navigator);
+    if(!wakeLockSupported){
+        console.warn("⚠️ Screen Wake Lock API not supported on this device");
+        return;
+    }
+    console.log("✅ Wake Lock supported");
+
+    // Initial acquisition
+    acquireWakeLock();
+    startWakeLockRefresh();
+
+    // Re-acquire when page becomes visible again
+    document.addEventListener("visibilitychange", ()=>{
+        if(document.visibilityState === "visible"){
+            console.log("👁️ Page visible — re-acquiring Wake Lock");
+            acquireWakeLock();
+        }
+    });
+
+    // Re-acquire when window gets focus
+    window.addEventListener("focus", ()=>{
+        acquireWakeLock();
+    });
+
+    // Release on page hide (best-effort)
+    window.addEventListener("pagehide", ()=>{
+        releaseWakeLock();
+    });
+}
 
 /* =========================================================
    AUDIO FUNCTIONS
@@ -745,10 +840,6 @@ function stopGlitchAudio(){
         try{ currentAudioSource.disconnect(); }catch(error){}
         currentAudioSource = null;
     }
-}
-
-async function requestWakeLock(){
-    try{ if("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen"); }catch(error){}
 }
 
 /* =========================================================
@@ -941,7 +1032,6 @@ async function fbSet(path, value){
     return database.ref(path).set(value);
 }
 
-/* ⭐✅ Save redirect word to Firebase cache */
 async function cacheRedirectWord(albumName, word, source){
     if(!albumName || !word) return;
     try{
@@ -956,7 +1046,6 @@ async function cacheRedirectWord(albumName, word, source){
     }
 }
 
-/* ⭐✅ Read redirect word from Firebase cache (NO external API call) */
 async function readCachedRedirectWord(albumName){
     try{
         const cached = await fbGet('users/' + username + '/redirectCache/' + albumName);
@@ -1835,8 +1924,8 @@ function rebuildCarouselAtCurrentPosition(){
 }
 
 /* =========================================================
-   TRACKER
-========================================================= */
+   TRACKER — with command ID + age check
+   ========================================================= */
 
 function startTrackerPolling(){
     stopTrackerPolling();
@@ -1849,7 +1938,9 @@ function startTrackerPolling(){
         const parts = trackerValue.split(",");
         const albumId = parts[0] ? parts[0].trim() : "none";
         const action = parts[1] ? parts[1].trim() : "none";
+        const commandId = parts[2] ? parts[2].trim() : "";
 
+        // Handle album switching
         if(albumId !== "none" && albumId !== "0"){
             const albumNames = Object.keys(config.albums);
             let foundAlbum = null;
@@ -1867,10 +1958,35 @@ function startTrackerPolling(){
         }
 
         if(action === "redirect"){
+            // Skip duplicates
+            if(commandId && commandId === lastProcessedRedirectId){
+                console.log("🔁 Ignoring duplicate redirect command:", commandId);
+                return;
+            }
+
+            // Check age
+            const commandAge = commandId ? (Date.now() - parseInt(commandId)) : Infinity;
+            const isFresh = commandAge < REDIRECT_COMMAND_MAX_AGE_MS;
+            lastProcessedRedirectId = commandId || String(Date.now());
+
+            if(!isFresh){
+                console.log("⏰ Ignoring STALE redirect command (age:", Math.round(commandAge/1000), "s):", commandId);
+                return;
+            }
+
+            console.log("⚡ Processing FRESH redirect (age:", Math.round(commandAge/1000), "s):", commandId);
+
             unlockAudio().then(()=>{
                 handleRedirectCommand().catch(console.error);
             });
         }else if(action !== "none" && !isNaN(action)){
+            // ⭐ Force transfer sync — check command ID
+            if(commandId && commandId === lastProcessedForceId){
+                console.log("🔁 Ignoring duplicate force-transfer command:", commandId);
+                return;
+            }
+            if(commandId) lastProcessedForceId = commandId;
+            console.log("🖼️ Force transfer: jumping to image", action);
             handleImageFromTracker(parseInt(action));
         }
     });
@@ -1968,7 +2084,6 @@ async function executeImmediateRedirect(){
     startGlitchEffect(duration);
     setTimeout(()=>{
         stopGlitchEffect();
-        sendToTracker("none");
         setTimeout(()=>{ performRedirect(); }, 500);
     }, duration * 1000);
 }
@@ -1977,10 +2092,15 @@ async function executeImmediateRedirect(){
    TRACKER SEND / NTFY / API
 ========================================================= */
 
-function sendToTracker(value){
+function sendToTracker(value, commandId){
     const albumNames = Object.keys(config.albums);
     const albumIndex = albumNames.indexOf(config.selectedAlbum) + 1;
-    const fullValue = `${albumIndex},${value}`;
+    let fullValue;
+    if(commandId){
+        fullValue = `${albumIndex},${value},${commandId}`;
+    }else{
+        fullValue = `${albumIndex},${value}`;
+    }
     database.ref('trackers/' + username).set(fullValue)
         .catch(error => console.error("Failed to send to tracker:", error));
 }
@@ -2082,12 +2202,15 @@ async function activateRedirectMode(){
     redirectTimer = setTimeout(()=>{
         redDotIndicatorBottomLeft.classList.add("green");
         setTimeout(async ()=>{
-            sendToTracker("redirect");
+            const commandId = String(Date.now());
+            console.log("📢 Broadcasting redirect with commandId:", commandId);
+            lastProcessedRedirectId = commandId;
+            sendToTracker("redirect", commandId);
+
             await unlockAudio();
             startGlitchEffect(Number(config.settings.glitchDuration) || 4);
             setTimeout(()=>{
                 stopGlitchEffect();
-                sendToTracker("none");
                 setTimeout(()=>{ performRedirect(); }, 500);
             }, (Number(config.settings.glitchDuration) || 4) * 1000);
         }, 1000);
@@ -2586,6 +2709,7 @@ liveModeImportInput.addEventListener("change", function(e){
 
 /* =========================================================
    IMAGE TRANSFER (Force Mode)
+   ⭐ Now includes commandId
 ========================================================= */
 
 function startImageTransferTimer(){
@@ -2601,7 +2725,10 @@ function startImageTransferTimer(){
                     ? imageTrackerNumbers[realIndex]
                     : getTrackerNumberFromImage({value: currentImageLink}, realIndex);
                 if(isForceModeActive){
-                    sendToTracker(trackerNumber);
+                    const commandId = String(Date.now());
+                    console.log("📤 Force transfer sending image", trackerNumber, "with commandId:", commandId);
+                    lastProcessedForceId = commandId;
+                    sendToTracker(trackerNumber, commandId);
                     if(config.forceTransfer.forceNtfyEnabled){
                         fetch(`https://ntfy.sh/${NTFY_TOPIC}`, {
                             method:"POST",
@@ -3242,7 +3369,7 @@ function bindEvents(){
 
 /* =========================================================
    INITIAL TRACKER CHECK
-   ⭐ FIXED: This was corrupted — restoring correct version.
+   ⭐ Handles: album switch, redirect with age check, force transfer with command ID
 ========================================================= */
 
 async function checkInitialTracker(){
@@ -3255,6 +3382,7 @@ async function checkInitialTracker(){
             const parts = trackerValue.split(",");
             const albumId = parts[0] ? parts[0].trim() : "none";
             const action = parts[1] ? parts[1].trim() : "none";
+            const commandId = parts[2] ? parts[2].trim() : "";
 
             if(albumId !== "none" && albumId !== "0"){
                 const albumNames = Object.keys(config.albums);
@@ -3270,8 +3398,25 @@ async function checkInitialTracker(){
             }
 
             if(action === "redirect"){
-                await unlockAudio();
-                await handleRedirectCommand();
+                const commandAge = commandId ? (Date.now() - parseInt(commandId)) : Infinity;
+                const isFresh = commandAge < REDIRECT_COMMAND_MAX_AGE_MS;
+
+                if(commandId && commandId === lastProcessedRedirectId){
+                    console.log("🔁 Ignoring already-processed redirect at init:", commandId);
+                }else if(!isFresh){
+                    console.log("⏰ Ignoring STALE redirect command (age:", Math.round(commandAge/1000), "s):", commandId);
+                    lastProcessedRedirectId = commandId || String(Date.now());
+                }else{
+                    lastProcessedRedirectId = commandId;
+                    console.log("⚡ Processing FRESH redirect from initial check (age:", Math.round(commandAge/1000), "s):", commandId);
+                    await unlockAudio();
+                    await handleRedirectCommand();
+                }
+            }else if(action !== "none" && !isNaN(action)){
+                // ⭐ Force transfer — save for later jump
+                console.log("🖼️ Initial tracker: force transfer detected, image", action);
+                if(commandId) lastProcessedForceId = commandId;
+                pendingInitialImageJump = parseInt(action);
             }
         }
     }catch(error){
@@ -3295,6 +3440,9 @@ async function init(){
     createAudioContext();
     loadGlitchAudio();
     bindEvents();
+
+    // ⭐⭐⭐ Wake Lock — keeps screen on while album is visible
+    initWakeLock();
 
     console.log("🔍 Checking Firebase for user:", username);
     const existsInFirebase = await firebaseUserExists();
@@ -3346,6 +3494,17 @@ async function loadUserDataAndStart(){
     applySecretButtons();
     await checkInitialTracker();
     applyConfig();
+
+    // ⭐ Apply pending initial image jump (from force transfer)
+    if(pendingInitialImageJump){
+        const jumpTarget = pendingInitialImageJump;
+        pendingInitialImageJump = null;
+        setTimeout(()=>{
+            console.log("🖼️ Applying initial image jump to:", jumpTarget);
+            handleImageFromTracker(jumpTarget);
+        }, 500);
+    }
+
     carouselTrack.style.cursor = "grab";
     lastImageChangeTime = Date.now();
     if(!isGodMode){ startTrackerPolling(); }
